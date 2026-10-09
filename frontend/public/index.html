@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RouteGuard — Security-Aware Routing & Attack-Path Analyzer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; padding: 20px; }
+    header {
+      background: #1e293b; padding: 16px 24px; border-bottom: 1px solid #334155;
+      display: flex; justify-content: space-between; align-items: center;
+      border-radius: 8px; margin-bottom: 20px;
+    }
+    h1 { font-size: 20px; color: #38bdf8; }
+    .layout-grid { display: grid; grid-template-columns: 7fr 5fr; gap: 20px; }
+    .card { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; }
+    #canvas-container {
+      width: 100%; height: 480px; position: relative;
+      background: #020617; border-radius: 8px; border: 1px solid #334155;
+    }
+    canvas { display: block; }
+    .btn {
+      background: #2563eb; color: white; border: none; padding: 8px 16px;
+      border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .btn-red { background: #dc2626; }
+    .btn-red:hover { background: #b91c1c; }
+    pre {
+      background: #020617; color: #38bdf8; padding: 12px; border-radius: 8px;
+      font-size: 11px; overflow-x: auto; max-height: 220px; margin-top: 10px;
+      border: 1px solid #334155; white-space: pre-wrap; word-break: break-all;
+    }
+    #status-log {
+      margin-top: 10px; font-family: monospace; font-size: 12px; color: #4ade80;
+      background: #020617; padding: 10px; border-radius: 6px;
+      height: 80px; overflow-y: auto; border: 1px solid #334155;
+    }
+    .input-group { margin-bottom: 12px; }
+    .input-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: #94a3b8; }
+    .input-group input, .input-group select {
+      width: 100%; padding: 6px 10px; border: 1px solid #334155;
+      background: #0f172a; color: #fff; border-radius: 6px; font-size: 13px;
+    }
+    .flex-gap { display: flex; gap: 10px; }
+    /* Zone legend */
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 11px; }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>RouteGuard</h1>
+      <p style="font-size: 12px; color: #94a3b8;">Security-Aware Routing &amp; Attack-Path Analyzer</p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <span id="user-badge" style="font-size:11px; color:#94a3b8; background:#0f172a; padding:4px 10px; border-radius:20px; border:1px solid #334155;"></span>
+      <button onclick="resetGraph()" class="btn" style="background: #334155;">Reset Network</button>
+    </div>
+  </header>
+
+  <div class="layout-grid">
+    <!-- Graph Canvas View -->
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h2 style="font-size: 16px;">Network Topology Graph</h2>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#38bdf8;"></span>Internet</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#fbbf24;"></span>DMZ</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#c084fc;"></span>App</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#f87171;"></span>DB</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#34d399;"></span>Mgmt</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span>Compromised</span>
+        </div>
+      </div>
+      <div id="canvas-container">
+        <canvas id="networkCanvas"></canvas>
+      </div>
+      <div id="status-log">Initializing system...<br></div>
+    </div>
+
+    <!-- Right Controls -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+
+      <!-- Routing Controls -->
+      <div class="card">
+        <h2 style="font-size: 16px; margin-bottom: 12px;">Security &amp; Routing Controls</h2>
+        <div class="flex-gap">
+          <div class="input-group" style="flex: 1;">
+            <label>Source Node</label>
+            <input id="source-node" type="text" value="internet">
+          </div>
+          <div class="input-group" style="flex: 1;">
+            <label>Target Node</label>
+            <input id="target-node" type="text" value="db01">
+          </div>
+        </div>
+        <div class="flex-gap">
+          <button onclick="runRouting()" class="btn" style="flex: 1;">Compare Routes</button>
+          <button onclick="runAttackPaths()" class="btn btn-red" style="flex: 1;">Analyze Attack Paths</button>
+        </div>
+        <div style="margin-top:8px;" class="flex-gap">
+          <button onclick="runDijkstra()" class="btn" style="flex:1; background:#0f766e;">Dijkstra Path</button>
+          <button onclick="runReachability()" class="btn" style="flex:1; background:#6d28d9;">Reachability Tree</button>
+        </div>
+      </div>
+
+      <!-- What-If Simulator -->
+      <div class="card">
+        <h2 style="font-size: 16px; margin-bottom: 12px;">What-If Compromise Simulator</h2>
+        <div class="flex-gap">
+          <div class="input-group" style="flex: 1;">
+            <label>Action</label>
+            <select id="sim-action">
+              <option value="COMPROMISE_NODE">Compromise Node</option>
+              <option value="DISABLE_NODE">Disable Node</option>
+              <option value="DISABLE_LINK">Disable Link</option>
+            </select>
+          </div>
+          <div class="input-group" style="flex: 1;">
+            <label>Target Node ID</label>
+            <input id="sim-target" type="text" value="app01">
+          </div>
+        </div>
+        <button onclick="runSimulation()" class="btn" style="width: 100%; background: #475569;">
+          Execute Simulation &amp; Compare
+        </button>
+      </div>
+
+      <!-- Security Findings -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="font-size: 16px;">Analysis Results</h2>
+          <button onclick="getFindings()" class="btn" style="font-size:11px; padding:4px 10px; background:#0f766e;">
+            Security Findings
+          </button>
+        </div>
+        <pre id="output-display">Click an action above to inspect analysis results.</pre>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin + "/api";
+    let jwtToken = "";
+    let currentNetworkData = null;
+    // Dynamic node positions computed after fetch
+    let nodePositions = {};
+
+    /* ── Colours by zone ────────────────────────────────────────────── */
+    const ZONE_COLORS = {
+      "INTERNET":    "#38bdf8",
+      "DMZ":         "#fbbf24",
+      "APPLICATION": "#c084fc",
+      "DATABASE":    "#f87171",
+      "MANAGEMENT":  "#34d399",
+      "PRIVATE":     "#a78bfa"
+    };
+
+    function zoneColor(zone, compromised) {
+      if (compromised) return "#ef4444";
+      return ZONE_COLORS[zone] || "#64748b";
+    }
+
+    /* ── Status log ─────────────────────────────────────────────────── */
+    function log(msg, isErr = false) {
+      const box = document.getElementById("status-log");
+      if (!box) return;
+      const color = isErr ? "#f87171" : "#4ade80";
+      box.innerHTML += `<span style="color:${color}">[${new Date().toLocaleTimeString()}] ${msg}</span><br>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    /* ── Compute positions automatically using layered layout ────────
+       Zones are placed in columns left → right in security order.
+       Multiple nodes in the same zone are stacked vertically.         */
+    const ZONE_ORDER = ["INTERNET", "DMZ", "APPLICATION", "DATABASE", "MANAGEMENT", "PRIVATE"];
+
+    function computeNodePositions(nodes, canvasWidth, canvasHeight) {
+      const positions = {};
+      // Group nodes by zone
+      const zoneGroups = {};
+      nodes.forEach(n => {
+        const z = n.zone || "DMZ";
+        if (!zoneGroups[z]) zoneGroups[z] = [];
+        zoneGroups[z].push(n.id);
+      });
+
+      // Sort zones by preferred column order
+      const orderedZones = [...ZONE_ORDER.filter(z => zoneGroups[z]), ...Object.keys(zoneGroups).filter(z => !ZONE_ORDER.includes(z))];
+      const numCols = orderedZones.length;
+      const colWidth = canvasWidth / (numCols + 1);
+
+      orderedZones.forEach((zone, colIdx) => {
+        const group = zoneGroups[zone];
+        const cx = colWidth * (colIdx + 1);
+        const rowHeight = canvasHeight / (group.length + 1);
+        group.forEach((nodeId, rowIdx) => {
+          positions[nodeId] = {
+            x: cx,
+            y: rowHeight * (rowIdx + 1)
+          };
+        });
+      });
+
+      return positions;
+    }
+
+    /* ── Draw graph on canvas ────────────────────────────────────────── */
+    function drawGraph(data) {
+      const canvas = document.getElementById("networkCanvas");
+      const container = document.getElementById("canvas-container");
+      const W = container.clientWidth || 700;
+      const H = container.clientHeight || 480;
+      canvas.width = W;
+      canvas.height = H;
+
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, W, H);
+
+      if (!data || !data.nodes) return;
+
+      // Recompute positions each time (handles new nodes after simulation)
+      nodePositions = computeNodePositions(data.nodes, W, H);
+
+      const NODE_RADIUS = 28;
+
+      // ── Draw zone labels in background ─────────────────────────────
+      const ZONE_ORDER_LOCAL = ["INTERNET", "DMZ", "APPLICATION", "DATABASE", "MANAGEMENT", "PRIVATE"];
+      const zoneGroups = {};
+      data.nodes.forEach(n => {
+        const z = n.zone || "DMZ";
+        if (!zoneGroups[z]) zoneGroups[z] = [];
+        zoneGroups[z].push(n.id);
+      });
+      const orderedZones = [...ZONE_ORDER_LOCAL.filter(z => zoneGroups[z]), ...Object.keys(zoneGroups).filter(z => !ZONE_ORDER_LOCAL.includes(z))];
+      const colWidth = W / (orderedZones.length + 1);
+
+      orderedZones.forEach((zone, colIdx) => {
+        const cx = colWidth * (colIdx + 1);
+        // Draw subtle vertical zone lane
+        ctx.fillStyle = "rgba(255,255,255,0.02)";
+        ctx.fillRect(cx - colWidth / 2, 0, colWidth, H);
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        ctx.strokeRect(cx - colWidth / 2, 0, colWidth, H);
+
+        // Zone label at top
+        ctx.fillStyle = ZONE_COLORS[zone] || "#64748b";
+        ctx.font = "bold 10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(zone, cx, 18);
+      });
+
+      // ── Draw edges ──────────────────────────────────────────────────
+      if (data.edges) {
+        data.edges.forEach(edge => {
+          const s = nodePositions[edge.source];
+          const d = nodePositions[edge.destination];
+          if (!s || !d) return;
+
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y);
+          ctx.lineTo(d.x, d.y);
+          ctx.strokeStyle = edge.encrypted ? "#38bdf8" : "#f87171";
+          ctx.lineWidth = edge.active === false ? 1 : 2.5;
+          ctx.setLineDash(edge.active === false ? [4, 4] : []);
+          ctx.globalAlpha = edge.active === false ? 0.4 : 1;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+
+          // Cost label at midpoint
+          const mx = (s.x + d.x) / 2;
+          const my = (s.y + d.y) / 2;
+          ctx.fillStyle = "#94a3b8";
+          ctx.font = "10px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(`${edge.cost}`, mx, my - 6);
+        });
+      }
+
+      // ── Draw nodes ──────────────────────────────────────────────────
+      if (data.nodes) {
+        data.nodes.forEach(node => {
+          const pos = nodePositions[node.id];
+          if (!pos) return;
+
+          const color = zoneColor(node.zone, node.compromised);
+
+          // Shadow glow for compromised nodes
+          if (node.compromised) {
+            ctx.shadowColor = "#ef4444";
+            ctx.shadowBlur = 20;
+          }
+
+          // Circle
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, NODE_RADIUS, 0, 2 * Math.PI);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = node.compromised ? "#fca5a5" : "#ffffff33";
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          // Short name label inside
+          const shortName = node.name.length > 14 ? node.name.substring(0, 13) + "…" : node.name;
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 10px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(shortName, pos.x, pos.y + 3);
+
+          // ID below circle
+          ctx.fillStyle = "#94a3b8";
+          ctx.font = "10px monospace";
+          ctx.fillText(`[${node.id}]`, pos.x, pos.y + NODE_RADIUS + 15);
+
+          // Compromised warning badge
+          if (node.compromised) {
+            ctx.fillStyle = "#ef4444";
+            ctx.font = "bold 10px sans-serif";
+            ctx.fillText("⚠ COMPROMISED", pos.x, pos.y + NODE_RADIUS + 28);
+          }
+        });
+      }
+
+      log(`Graph rendered: ${data.nodes.length} nodes, ${(data.edges || []).length} edges.`);
+    }
+
+    /* ── Auth & initial load ─────────────────────────────────────────── */
+    async function loadGraph() {
+      try {
+        log("Authenticating with backend...");
+        const authRes = await fetch(`${API_BASE}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: "admin", password: "AdminSecurePassword123!" })
+        });
+
+        if (!authRes.ok) {
+          const errText = await authRes.text();
+          throw new Error(`Auth failed (HTTP ${authRes.status}): ${errText}`);
+        }
+        const authData = await authRes.json();
+        jwtToken = authData.access_token;
+        document.getElementById("user-badge").textContent = `👤 admin  |  ${authData.role}`;
+        log("Authenticated successfully.");
+
+        log("Fetching topology from /api/network...");
+        const netRes = await fetch(`${API_BASE}/network`, {
+          headers: { "Authorization": `Bearer ${jwtToken}` }
+        });
+
+        if (!netRes.ok) {
+          const errText = await netRes.text();
+          throw new Error(`Network fetch failed (HTTP ${netRes.status}): ${errText}`);
+        }
+        const netData = await netRes.json();
+        currentNetworkData = netData;
+        log(`Received: ${netData.nodes.length} nodes, ${netData.edges.length} edges.`);
+        drawGraph(netData);
+
+      } catch (e) {
+        log("Error: " + e.message, true);
+      }
+    }
+
+    /* ── API helpers ─────────────────────────────────────────────────── */
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, {
+        ...options,
+        headers: { "Authorization": `Bearer ${jwtToken}`, ...(options.headers || {}) }
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText}`);
+      }
+      return res.json();
+    }
+
+    function showOutput(data) {
+      document.getElementById("output-display").textContent = JSON.stringify(data, null, 2);
+    }
+
+    /* ── Button actions ──────────────────────────────────────────────── */
+    async function runRouting() {
+      const src = document.getElementById("source-node").value.trim();
+      const dst = document.getElementById("target-node").value.trim();
+      try {
+        log(`Running security-aware routing: ${src} → ${dst}`);
+        const data = await apiFetch(`${API_BASE}/routing/security-aware?source=${src}&destination=${dst}`);
+        showOutput(data);
+      } catch (e) {
+        log("Routing error: " + e.message, true);
+        document.getElementById("output-display").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function runDijkstra() {
+      const src = document.getElementById("source-node").value.trim();
+      const dst = document.getElementById("target-node").value.trim();
+      try {
+        log(`Running Dijkstra: ${src} → ${dst}`);
+        const data = await apiFetch(`${API_BASE}/routing/dijkstra?source=${src}&destination=${dst}`);
+        showOutput(data);
+      } catch (e) {
+        log("Dijkstra error: " + e.message, true);
+        document.getElementById("output-display").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function runAttackPaths() {
+      const src = document.getElementById("source-node").value.trim();
+      const dst = document.getElementById("target-node").value.trim();
+      try {
+        log(`Analyzing attack paths: ${src} → ${dst}`);
+        const data = await apiFetch(`${API_BASE}/security/attack-paths?source=${src}&target=${dst}`);
+        showOutput(data);
+      } catch (e) {
+        log("Attack-path error: " + e.message, true);
+        document.getElementById("output-display").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function getFindings() {
+      try {
+        log("Fetching security findings...");
+        const data = await apiFetch(`${API_BASE}/security/findings`);
+        showOutput(data);
+      } catch (e) {
+        log("Findings error: " + e.message, true);
+        document.getElementById("output-display").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function runSimulation() {
+      const action = document.getElementById("sim-action").value;
+      const target = document.getElementById("sim-target").value.trim();
+      const src = document.getElementById("source-node").value.trim();
+      const dst = document.getElementById("target-node").value.trim();
+      try {
+        log(`Simulation: ${action} on ${target}`);
+        const data = await apiFetch(
+          `${API_BASE}/simulation/what-if?action=${action}&target_id=${target}&source_id=${src}&dest_id=${dst}`,
+          { method: "POST" }
+        );
+        showOutput(data);
+        // Reload graph after simulation to reflect changes
+        await loadGraph();
+      } catch (e) {
+        log("Simulation error: " + e.message, true);
+        document.getElementById("output-display").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function runReachability() {
+      const src = document.getElementById("source-node").value.trim();
+      try {
+        log(`Reachability tree from: ${src}`);
+        const data = await apiFetch(`${API_BASE}/routing/reachability-tree?source=${src}`);
+        showOutput(data);
+      } catch (e) {
+        log("Reachability error: " + e.message, true);
+        document.getElementById("output-display").textContent = "Error: " + e.message;
+      }
+    }
+
+    async function resetGraph() {
+      try {
+        log("Resetting network to default state...");
+        await apiFetch(`${API_BASE}/network/reset`, { method: "POST" });
+        log("Network reset complete.");
+        await loadGraph();
+      } catch (e) {
+        log("Reset error: " + e.message, true);
+      }
+    }
+
+    // Resize canvas when window resizes
+    window.addEventListener("resize", () => {
+      if (currentNetworkData) drawGraph(currentNetworkData);
+    });
+
+    window.addEventListener("DOMContentLoaded", loadGraph);
+  </script>
+</body>
+</html>

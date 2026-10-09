@@ -1,0 +1,2516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RouteGuard — Security Intelligence Platform</title>
+<script src="/vis-network.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   DESIGN TOKENS & RESET
+═══════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --r-xl:   48px;
+  --r-lg:   28px;
+  --r-md:   18px;
+  --r-sm:   12px;
+
+  /* Warm pastel palette */
+  --peach:   #ffb89a;
+  --coral:   #ff8c6b;
+  --lavender:#c4b5fd;
+  --purple:  #a78bfa;
+  --blue:    #93c5fd;
+  --sky:     #bae6fd;
+  --rose:    #fda4af;
+  --amber:   #fcd34d;
+  --mint:    #6ee7b7;
+
+  /* Semantic */
+  --bg-page: #f0eef8;
+  --glass-bg:       rgba(255,255,255,0.52);
+  --glass-bg-dark:  rgba(255,255,255,0.28);
+  --glass-border:   rgba(255,255,255,0.75);
+  --glass-border-2: rgba(255,255,255,0.45);
+  --shadow-soft:    0 8px 40px rgba(120,80,160,0.10), 0 2px 12px rgba(120,80,160,0.07);
+  --shadow-float:   0 20px 60px rgba(100,60,140,0.16), 0 4px 20px rgba(100,60,140,0.10);
+  --shadow-deep:    0 32px 80px rgba(80,40,120,0.22), 0 8px 32px rgba(80,40,120,0.12);
+
+  --text-primary:  #1e1140;
+  --text-secondary:#5b4b7a;
+  --text-muted:    #9488b0;
+  --text-white:    rgba(255,255,255,0.94);
+  --text-white-dim:rgba(255,255,255,0.65);
+
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Ambient background ─────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 10%,  rgba(255,184,154,0.42) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 85% 5%,   rgba(196,181,253,0.38) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 60% at 90% 75%,  rgba(147,197,253,0.32) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 50% at 10% 80%,  rgba(253,164,175,0.28) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 80% at 50% 50%,  rgba(240,236,248,0.9)  0%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Subtle mesh texture overlay */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    radial-gradient(circle, rgba(120,80,200,0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(160,120,220,0.25); border-radius: 10px; }
+
+/* ── Glass card mixin ───────────────────────────────────────────── */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+}
+.glass::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.9) 50%, transparent 100%);
+  pointer-events: none;
+}
+.glass-dark {
+  background: var(--glass-bg-dark);
+  backdrop-filter: blur(30px) saturate(1.8);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  border: 1px solid var(--glass-border-2);
+  box-shadow: var(--shadow-float);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TOP NAVIGATION
+═══════════════════════════════════════════════════════════════════ */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  height: 68px;
+  background: rgba(255,255,255,0.62);
+  backdrop-filter: blur(32px) saturate(1.8);
+  -webkit-backdrop-filter: blur(32px) saturate(1.8);
+  border-bottom: 1px solid rgba(255,255,255,0.8);
+  box-shadow: 0 4px 24px rgba(120,80,200,0.08), 0 1px 0 rgba(255,255,255,0.6);
+  display: flex; align-items: center;
+  padding: 0 32px;
+  gap: 0;
+}
+
+.nav-logo {
+  display: flex; align-items: center; gap: 12px;
+  text-decoration: none; flex-shrink: 0;
+}
+.nav-logo-icon {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: linear-gradient(135deg, #ff8c6b 0%, #a78bfa 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(167,139,250,0.45), 0 0 0 1px rgba(255,255,255,0.6);
+  flex-shrink: 0;
+}
+.nav-logo-icon svg { width: 20px; height: 20px; fill: white; }
+.nav-logo-name { font-size: 17px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.3px; }
+.nav-logo-tag  { font-size: 10px; color: var(--text-muted); font-weight: 500; margin-top: 1px; }
+
+.nav-links {
+  display: flex; align-items: center; gap: 2px;
+  margin-left: 40px;
+  flex: 1;
+}
+.nav-link {
+  padding: 7px 16px; border-radius: 10px;
+  font-size: 14px; font-weight: 500; color: var(--text-secondary);
+  cursor: pointer; border: none; background: transparent;
+  transition: all 0.2s ease; white-space: nowrap; font-family: var(--font);
+}
+.nav-link:hover  { background: rgba(167,139,250,0.12); color: var(--text-primary); }
+.nav-link.active { background: rgba(167,139,250,0.18); color: #6d28d9; font-weight: 600; }
+
+.nav-actions {
+  display: flex; align-items: center; gap: 10px; margin-left: auto;
+}
+.nav-search {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.7); border: 1px solid rgba(200,180,240,0.4);
+  border-radius: 12px; padding: 7px 14px;
+  font-size: 13px; color: var(--text-muted);
+  width: 200px; cursor: text;
+  transition: all 0.2s;
+}
+.nav-search:hover { background: rgba(255,255,255,0.9); border-color: rgba(167,139,250,0.5); }
+.nav-search svg { width: 14px; height: 14px; opacity: 0.5; flex-shrink: 0; }
+.nav-icon-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: rgba(255,255,255,0.7); border: 1px solid rgba(200,180,240,0.4);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s; color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.nav-icon-btn:hover { background: rgba(255,255,255,0.95); box-shadow: 0 4px 14px rgba(167,139,250,0.2); transform: translateY(-1px); }
+.nav-icon-btn svg { width: 16px; height: 16px; }
+.nav-status-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 6px #22c55e; animation: pulse-green 2s infinite; flex-shrink: 0; }
+@keyframes pulse-green { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(1.4)} }
+.nav-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #ffb89a, #a78bfa);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: white;
+  border: 2px solid rgba(255,255,255,0.8);
+  box-shadow: 0 2px 10px rgba(167,139,250,0.3);
+  cursor: pointer; flex-shrink: 0;
+}
+#nav-user-name { font-size: 12px; font-weight: 600; color: var(--text-secondary); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   PAGE WRAPPER
+═══════════════════════════════════════════════════════════════════ */
+.page { position: relative; z-index: 1; padding-top: 68px; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   HERO SECTION
+═══════════════════════════════════════════════════════════════════ */
+.hero {
+  position: relative;
+  min-height: 520px;
+  padding: 48px 40px 56px;
+  display: flex; align-items: stretch; gap: 28px;
+  overflow: hidden;
+}
+
+/* Floating 3D orbs in hero background */
+.orb {
+  position: absolute; border-radius: 50%;
+  filter: blur(1px);
+  pointer-events: none; z-index: 0;
+}
+.orb-1 {
+  width: 320px; height: 320px;
+  background: radial-gradient(circle at 38% 35%, rgba(255,200,160,0.7), rgba(255,140,107,0.45) 40%, rgba(255,120,80,0.15) 70%, transparent);
+  top: -60px; right: 18%;
+  box-shadow: inset -20px -20px 60px rgba(255,255,255,0.4), inset 20px 20px 40px rgba(255,100,50,0.15);
+  animation: float1 8s ease-in-out infinite;
+}
+.orb-2 {
+  width: 240px; height: 240px;
+  background: radial-gradient(circle at 35% 32%, rgba(220,200,255,0.85), rgba(167,139,250,0.55) 40%, rgba(140,100,230,0.2) 70%, transparent);
+  top: 30px; right: 6%;
+  box-shadow: inset -15px -15px 50px rgba(255,255,255,0.5), inset 15px 15px 35px rgba(120,80,220,0.12);
+  animation: float2 7s ease-in-out infinite;
+}
+.orb-3 {
+  width: 180px; height: 180px;
+  background: radial-gradient(circle at 38% 35%, rgba(186,230,253,0.9), rgba(147,197,253,0.6) 40%, rgba(100,160,240,0.2) 70%, transparent);
+  bottom: 40px; right: 24%;
+  box-shadow: inset -12px -12px 40px rgba(255,255,255,0.5), inset 12px 12px 30px rgba(80,150,230,0.1);
+  animation: float3 9s ease-in-out infinite;
+}
+.orb-4 {
+  width: 120px; height: 120px;
+  background: radial-gradient(circle at 38% 32%, rgba(253,164,175,0.85), rgba(251,113,133,0.5) 45%, transparent 70%);
+  bottom: 20px; left: 42%;
+  box-shadow: inset -8px -8px 30px rgba(255,255,255,0.5);
+  animation: float1 6s ease-in-out infinite reverse;
+}
+.orb-5 {
+  width: 90px; height: 90px;
+  background: radial-gradient(circle at 40% 35%, rgba(252,211,77,0.9), rgba(245,158,11,0.5) 45%, transparent 70%);
+  top: 80px; left: 34%;
+  box-shadow: inset -6px -6px 20px rgba(255,255,255,0.6);
+  animation: float2 5s ease-in-out infinite;
+}
+
+@keyframes float1 { 0%,100%{transform:translate(0,0) rotate(0deg)} 33%{transform:translate(-8px,-14px) rotate(2deg)} 66%{transform:translate(6px,-8px) rotate(-1deg)} }
+@keyframes float2 { 0%,100%{transform:translate(0,0) rotate(0deg)} 33%{transform:translate(10px,-10px) rotate(-2deg)} 66%{transform:translate(-6px,8px) rotate(1deg)} }
+@keyframes float3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-12px,10px)} }
+
+/* Abstract ring shape */
+.ring-shape {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  border: 2px solid rgba(167,139,250,0.15);
+}
+.ring-1 { width: 400px; height: 400px; top: -100px; right: 10%; opacity: 0.6; animation: spin-slow 30s linear infinite; }
+.ring-2 { width: 280px; height: 280px; top: 20px; right: 12%; opacity: 0.4; animation: spin-slow 22s linear infinite reverse; border-color: rgba(255,140,107,0.2); }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+
+/* Hero left: title + stats */
+.hero-left {
+  position: relative; z-index: 2;
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+  max-width: 620px;
+}
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.28);
+  border-radius: 20px; padding: 5px 14px;
+  font-size: 11px; font-weight: 600; color: #7c3aed;
+  letter-spacing: 0.6px; text-transform: uppercase;
+  margin-bottom: 20px; width: fit-content;
+}
+.hero-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: #7c3aed; animation: pulse-green 2s infinite; }
+.hero-title {
+  font-size: clamp(28px, 3.5vw, 44px);
+  font-weight: 800; line-height: 1.1;
+  color: var(--text-primary);
+  letter-spacing: -1.5px; margin-bottom: 14px;
+}
+.hero-title span {
+  background: linear-gradient(135deg, #ff6b4a, #a855f7 60%, #3b82f6);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.hero-sub {
+  font-size: 16px; color: var(--text-secondary); line-height: 1.65;
+  max-width: 520px; margin-bottom: 32px; font-weight: 400;
+}
+
+/* Hero stat pills */
+.hero-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 32px; }
+.stat-pill {
+  glass; background: rgba(255,255,255,0.65);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.8);
+  border-radius: 16px; padding: 14px 20px;
+  box-shadow: 0 4px 20px rgba(120,80,200,0.08);
+  transition: all 0.25s ease;
+}
+.stat-pill:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(120,80,200,0.14); }
+.stat-pill-val { font-size: 24px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.5px; line-height: 1; margin-bottom: 3px; }
+.stat-pill-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Hero action buttons */
+.hero-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 24px; border-radius: 14px; border: none;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: white; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.25s; font-family: var(--font);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.35);
+  letter-spacing: 0.1px;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(99,102,241,0.45); background: linear-gradient(135deg, #7c3aed, #4f46e5); }
+.btn-primary:active { transform: translateY(0); }
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 22px; border-radius: 14px;
+  background: rgba(255,255,255,0.65); border: 1px solid rgba(200,180,240,0.5);
+  color: var(--text-secondary); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.25s; font-family: var(--font);
+  backdrop-filter: blur(10px);
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.9); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(120,80,200,0.1); color: var(--text-primary); }
+
+/* ── Floating glass control panel (hero right) ────────────────── */
+.hero-panel {
+  position: relative; z-index: 2;
+  width: 340px; flex-shrink: 0;
+  background: rgba(255,255,255,0.58);
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  border: 1px solid rgba(255,255,255,0.82);
+  border-radius: var(--r-xl);
+  padding: 28px;
+  box-shadow: var(--shadow-deep);
+  display: flex; flex-direction: column; gap: 18px;
+}
+.hero-panel::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,1) 50%, transparent);
+}
+.panel-title {
+  font-size: 15px; font-weight: 700; color: var(--text-primary);
+  letter-spacing: -0.2px; margin-bottom: 2px;
+}
+.panel-sub { font-size: 12px; color: var(--text-muted); }
+.panel-section-label {
+  font-size: 11px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px;
+}
+
+/* Panel inputs */
+.panel-input-row { display: flex; gap: 10px; }
+.panel-input-wrap { flex: 1; }
+.panel-input-wrap label { font-size: 12px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.panel-input {
+  width: 100%; padding: 9px 12px;
+  background: rgba(255,255,255,0.7); border: 1px solid rgba(200,180,240,0.4);
+  border-radius: 12px; font-size: 14px; color: var(--text-primary);
+  font-family: var(--mono); outline: none; transition: all 0.2s;
+}
+.panel-input:focus { border-color: rgba(139,92,246,0.6); box-shadow: 0 0 0 3px rgba(139,92,246,0.1); background: rgba(255,255,255,0.9); }
+.panel-select {
+  width: 100%; padding: 9px 12px;
+  background: rgba(255,255,255,0.7); border: 1px solid rgba(200,180,240,0.4);
+  border-radius: 12px; font-size: 14px; color: var(--text-primary);
+  font-family: var(--font); outline: none; cursor: pointer; transition: all 0.2s;
+  -webkit-appearance: none; appearance: none;
+}
+
+/* Panel action buttons */
+.panel-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.panel-btn {
+  padding: 10px 8px; border-radius: 14px; border: none;
+  font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font);
+  transition: all 0.22s; display: flex; align-items: center; justify-content: center; gap: 5px;
+  letter-spacing: 0.2px;
+}
+.panel-btn:hover { transform: translateY(-2px); }
+.panel-btn:active { transform: scale(0.97); }
+.panel-btn-violet { background: linear-gradient(135deg,#8b5cf6,#7c3aed); color:white; box-shadow:0 4px 14px rgba(124,58,237,0.3); }
+.panel-btn-violet:hover { box-shadow:0 8px 22px rgba(124,58,237,0.42); }
+.panel-btn-rose   { background: linear-gradient(135deg,#f43f5e,#e11d48); color:white; box-shadow:0 4px 14px rgba(244,63,94,0.28); }
+.panel-btn-rose:hover   { box-shadow:0 8px 22px rgba(244,63,94,0.40); }
+.panel-btn-teal   { background: linear-gradient(135deg,#14b8a6,#0d9488); color:white; box-shadow:0 4px 14px rgba(20,184,166,0.26); }
+.panel-btn-teal:hover   { box-shadow:0 8px 22px rgba(20,184,166,0.38); }
+.panel-btn-amber  { background: linear-gradient(135deg,#f59e0b,#d97706); color:white; box-shadow:0 4px 14px rgba(245,158,11,0.26); }
+.panel-btn-amber:hover  { box-shadow:0 8px 22px rgba(245,158,11,0.38); }
+.panel-btn-slate  { background: rgba(255,255,255,0.7); border:1px solid rgba(200,180,240,0.4); color:var(--text-secondary); }
+.panel-btn-slate:hover  { background: rgba(255,255,255,0.95); color:var(--text-primary); }
+.panel-btn-full   { grid-column: 1/-1; background: linear-gradient(135deg,#f97316,#a855f7); color:white; box-shadow:0 4px 16px rgba(168,85,247,0.28); }
+.panel-btn-full:hover   { box-shadow:0 8px 24px rgba(168,85,247,0.40); }
+
+/* Separator */
+.panel-sep { border: none; border-top: 1px solid rgba(200,180,240,0.22); margin: 2px 0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   NETWORK GRAPH SECTION
+═══════════════════════════════════════════════════════════════════ */
+.graph-section { padding: 0 40px 32px; }
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px;
+}
+.section-title { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.4px; }
+.section-sub   { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+.graph-card {
+  border-radius: var(--r-xl);
+  background: rgba(255,255,255,0.58);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.82);
+  box-shadow: var(--shadow-float);
+  /* overflow: hidden removed — it clips the vis-network canvas and tooltip layer */
+  overflow: visible;
+  position: relative;
+}
+.graph-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,1) 50%, transparent);
+  z-index: 10;
+}
+.graph-header-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px 0;
+}
+.graph-legend { display: flex; gap: 10px; flex-wrap: wrap; }
+.leg-item { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.leg-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink:0; }
+
+/* THE FIX: explicit inline pixel height, no overflow clip */
+#network-graph {
+  width: 100%;
+  height: 520px;
+  background: rgba(250,248,255,0.5);
+  position: relative;
+  /* Do NOT set overflow:hidden here — it clips vis canvas events */
+  border-radius: 0 0 0 0;
+  overflow: visible;
+}
+
+/* Graph container with scroll capability */
+.graph-scroll-container {
+  width: 100%;
+  height: 520px;
+  overflow: auto;
+  border-radius: 0 0 var(--r-xl) var(--r-xl);
+  position: relative;
+}
+
+/* Graph maximize state */
+.graph-card.maximized {
+  position: fixed;
+  top: 68px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+  border-radius: 0;
+  margin: 0;
+}
+.graph-card.maximized #network-graph,
+.graph-card.maximized .graph-scroll-container {
+  height: calc(100vh - 200px);
+}
+
+/* Graph toolbar — zoom/pan controls */
+.graph-toolbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 24px 10px;
+  border-bottom: 1px solid rgba(200,180,240,0.2);
+  background: rgba(255,255,255,0.6);
+}
+.graph-tool-btn {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: rgba(255,255,255,0.7); border: 1px solid rgba(200,180,240,0.4);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s; color: var(--text-secondary);
+  font-size: 16px; font-weight: 700; font-family: var(--font);
+  flex-shrink: 0; user-select: none;
+}
+.graph-tool-btn:hover { background: rgba(255,255,255,0.95); box-shadow: 0 4px 14px rgba(120,80,200,0.12); color: var(--text-primary); transform: translateY(-1px); }
+.graph-tool-btn:active { transform: scale(0.95); }
+.graph-tool-sep { width: 1px; height: 22px; background: rgba(200,180,240,0.3); margin: 0 4px; }
+.graph-tool-label { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-left: 4px; }
+.graph-maximize-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: 10px;
+  background: rgba(139,92,246,0.08);
+  border: 1px solid rgba(139,92,246,0.2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: auto;
+}
+.graph-maximize-btn:hover {
+  background: rgba(139,92,246,0.15);
+  transform: translateY(-1px);
+}
+.graph-maximize-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Path ribbon under graph */
+.path-ribbon {
+  display: none; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 12px 24px 16px;
+  border-top: 1px solid rgba(200,180,240,0.2);
+}
+.path-ribbon.show { display: flex; }
+.path-node-chip {
+  padding: 3px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; font-family: var(--mono);
+  background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25);
+  color: #6d28d9;
+}
+.path-arrow-sep { color: var(--text-muted); font-size: 14px; }
+.path-risk-chip {
+  margin-left: auto; padding: 3px 12px; border-radius: 20px;
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.rc-LOW     { background:rgba(34,197,94,0.12);  border:1px solid rgba(34,197,94,0.3);  color:#16a34a; }
+.rc-MEDIUM  { background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); color:#b45309; }
+.rc-HIGH    { background:rgba(249,115,22,0.12); border:1px solid rgba(249,115,22,0.3); color:#c2410c; }
+.rc-CRITICAL{ background:rgba(239,68,68,0.12);  border:1px solid rgba(239,68,68,0.3);  color:#b91c1c; }
+
+/* Node info strip */
+.node-info-strip {
+  display: none; align-items: center; flex-wrap: wrap; gap: 16px;
+  padding: 10px 24px 14px;
+  border-top: 1px solid rgba(200,180,240,0.15);
+  font-size: 12px; background: rgba(255,255,255,0.4);
+}
+.node-info-strip.show { display: flex; }
+.ni-prop { color: var(--text-muted); }
+.ni-val  { color: var(--text-primary); font-weight: 700; font-family: var(--mono); }
+.ni-comp { color: #ef4444; font-weight: 700; }
+.ni-clean { color: #16a34a; font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   DASHBOARD CARDS GRID
+═══════════════════════════════════════════════════════════════════ */
+.dashboard { padding: 0 40px 48px; }
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 20px;
+}
+
+/* Column spans */
+.col-3  { grid-column: span 3; }
+.col-4  { grid-column: span 4; }
+.col-5  { grid-column: span 5; }
+.col-6  { grid-column: span 6; }
+.col-7  { grid-column: span 7; }
+.col-8  { grid-column: span 8; }
+.col-12 { grid-column: span 12; }
+
+@media (max-width: 1200px) {
+  .col-3 { grid-column: span 6; }
+  .col-4 { grid-column: span 6; }
+  .col-5 { grid-column: span 12; }
+  .col-7 { grid-column: span 12; }
+  .col-8 { grid-column: span 12; }
+}
+@media (max-width: 768px) {
+  .col-3,.col-4,.col-5,.col-6,.col-7,.col-8,.col-12 { grid-column: span 12; }
+  .hero { flex-direction: column; padding: 32px 20px 40px; }
+  .hero-panel { width: 100%; }
+  .nav-links { display: none; }
+  .nav-search { display: none; }
+  .graph-section,.dashboard { padding-left: 20px; padding-right: 20px; }
+}
+
+/* ── Dashboard card base ────────────────────────────────────────── */
+.dcard {
+  background: rgba(255,255,255,0.58);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid rgba(255,255,255,0.8);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-soft);
+  position: relative; overflow: hidden;
+  transition: all 0.28s ease;
+}
+.dcard:hover { transform: translateY(-4px); box-shadow: var(--shadow-float); }
+.dcard::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.95) 50%, transparent);
+}
+/* Card accent strip (top-left colored bar) */
+.dcard::after {
+  content: ''; position: absolute; top: 20px; left: 0; width: 3px; height: 32px;
+  border-radius: 0 3px 3px 0;
+  background: var(--card-accent, transparent);
+}
+.accent-violet { --card-accent: linear-gradient(to bottom, #8b5cf6, #6366f1); }
+.accent-rose   { --card-accent: linear-gradient(to bottom, #f43f5e, #ec4899); }
+.accent-amber  { --card-accent: linear-gradient(to bottom, #f59e0b, #f97316); }
+.accent-teal   { --card-accent: linear-gradient(to bottom, #14b8a6, #06b6d4); }
+.accent-blue   { --card-accent: linear-gradient(to bottom, #3b82f6, #06b6d4); }
+
+.dcard-label {
+  font-size: 12px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.dcard-icon {
+  width: 32px; height: 32px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0;
+}
+.dcard-val {
+  font-size: 34px; font-weight: 800; color: var(--text-primary);
+  letter-spacing: -1.5px; line-height: 1; margin-bottom: 6px;
+}
+.dcard-val-sm {
+  font-size: 22px; font-weight: 800; color: var(--text-primary);
+  letter-spacing: -0.8px; line-height: 1; margin-bottom: 6px;
+}
+.dcard-sub { font-size: 13px; color: var(--text-muted); }
+.dcard-change { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; margin-top: 6px; }
+.change-up   { color: #16a34a; }
+.change-down { color: #dc2626; }
+
+/* ── Mini sparkline (SVG bars) ──────────────────────────────────── */
+.sparkline { display: flex; align-items: flex-end; gap: 3px; height: 36px; margin-top: 12px; }
+.spark-bar {
+  flex: 1; border-radius: 4px 4px 0 0;
+  background: linear-gradient(to top, rgba(139,92,246,0.6), rgba(139,92,246,0.15));
+  min-width: 4px; transition: all 0.3s;
+}
+.spark-bar:hover { background: linear-gradient(to top, rgba(139,92,246,0.9), rgba(139,92,246,0.3)); }
+
+/* ── Radial progress ────────────────────────────────────────────── */
+.radial-wrap { display: flex; align-items: center; gap: 20px; }
+.radial-svg  { flex-shrink: 0; }
+.radial-info-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.radial-info-sub   { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Progress bars ──────────────────────────────────────────────── */
+.prog-row { margin-bottom: 14px; }
+.prog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.prog-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.prog-val   { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.prog-track {
+  height: 6px; border-radius: 10px;
+  background: rgba(200,180,240,0.2);
+  overflow: hidden;
+}
+.prog-fill {
+  height: 100%; border-radius: 10px;
+  transition: width 1.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ── Status list ────────────────────────────────────────────────── */
+.status-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.status-item { display: flex; align-items: center; gap: 10px; }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 20px;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
+}
+.sb-ok      { background:rgba(34,197,94,0.12);  border:1px solid rgba(34,197,94,0.25);  color:#16a34a; }
+.sb-warn    { background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.25); color:#b45309; }
+.sb-crit    { background:rgba(239,68,68,0.12);  border:1px solid rgba(239,68,68,0.25);  color:#b91c1c; }
+.sb-info    { background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.25); color:#4f46e5; }
+.status-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.status-meta { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+
+/* ── Findings card list ─────────────────────────────────────────── */
+.finding-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid rgba(200,180,240,0.15);
+}
+.finding-item:last-child { border-bottom: none; padding-bottom: 0; }
+.finding-sev-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+}
+.finding-body { flex: 1; min-width: 0; }
+.finding-title-sm { font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+.finding-desc-sm  { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+.tab-row { display: flex; gap: 4px; margin-bottom: 16px; }
+.tab-btn {
+  padding: 6px 14px; border-radius: 10px; border: none;
+  font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font);
+  color: var(--text-muted); background: transparent; transition: all 0.2s;
+}
+.tab-btn.active { background: rgba(139,92,246,0.12); color: #6d28d9; }
+.tab-btn:hover:not(.active) { background: rgba(200,180,240,0.15); color: var(--text-primary); }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── Results output ─────────────────────────────────────────────── */
+.result-output {
+  background: rgba(240,236,255,0.5); border: 1px solid rgba(200,180,240,0.3);
+  border-radius: 14px; padding: 14px;
+  font-family: var(--mono); font-size: 13px; color: #5b21b6;
+  max-height: 220px; overflow-y: auto; white-space: pre-wrap;
+  word-break: break-all; line-height: 1.65;
+}
+
+/* ── Algorithm lab ──────────────────────────────────────────────── */
+.lab-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.lab-btn {
+  padding: 10px 8px; border-radius: 14px;
+  background: rgba(255,255,255,0.65); border: 1px solid rgba(200,180,240,0.35);
+  font-size: 13px; font-weight: 700; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.2s; font-family: var(--font);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.lab-btn:hover { background: rgba(255,255,255,0.9); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(120,80,200,0.1); color: var(--text-primary); }
+.lab-btn-icon { font-size: 18px; }
+
+/* ── Status log ─────────────────────────────────────────────────── */
+.syslog {
+  background: rgba(240,236,255,0.4); border: 1px solid rgba(200,180,240,0.25);
+  border-radius: 12px; padding: 10px 14px;
+  font-family: var(--mono); font-size: 12px;
+  height: 72px; overflow-y: auto; color: #6d28d9;
+  line-height: 1.8;
+}
+
+/* ── Floating 3D decorative card ────────────────────────────────── */
+.deco-sphere {
+  border-radius: 50%; flex-shrink: 0;
+  box-shadow: inset -8px -8px 25px rgba(255,255,255,0.5), inset 6px 6px 18px rgba(0,0,0,0.06);
+}
+
+/* ── Tooltip (vis override) ─────────────────────────────────────── */
+.vis-tooltip {
+  background: rgba(255,255,255,0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(200,180,240,0.5) !important;
+  color: var(--text-primary) !important;
+  font-family: var(--mono) !important;
+  font-size: 11px !important; line-height: 1.6 !important;
+  border-radius: 12px !important; padding: 10px 14px !important;
+  box-shadow: 0 8px 24px rgba(120,80,200,0.15) !important;
+}
+
+/* ── Loader pulse on buttons ────────────────────────────────────── */
+.btn-loading { opacity: 0.7; pointer-events: none; }
+.spinner-inline {
+  display: inline-block; width: 11px; height: 11px;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+  border-radius: 50%; animation: spin .5s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Smooth fade-in for cards ───────────────────────────────────── */
+@keyframes fadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+.dcard, .graph-card, .hero-panel { animation: fadeUp 0.5s ease both; }
+.dcard:nth-child(1) { animation-delay:0.05s }
+.dcard:nth-child(2) { animation-delay:0.10s }
+.dcard:nth-child(3) { animation-delay:0.15s }
+.dcard:nth-child(4) { animation-delay:0.20s }
+.dcard:nth-child(5) { animation-delay:0.25s }
+.dcard:nth-child(6) { animation-delay:0.30s }
+.dcard:nth-child(7) { animation-delay:0.35s }
+.dcard:nth-child(8) { animation-delay:0.40s }
+
+/* ── Section transitions ─────────────────────────────────────────── */
+section { transition: opacity 0.3s ease; }
+
+/* ── Notification Panel ──────────────────────────────────────────── */
+.notification-panel {
+  position: absolute;
+  top: 60px;
+  right: 80px;
+  width: 380px;
+  max-height: 500px;
+  background: rgba(255,255,255,0.98);
+  backdrop-filter: blur(32px);
+  border: 1px solid rgba(200,180,240,0.4);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(100,60,140,0.25);
+  display: none;
+  flex-direction: column;
+  z-index: 2000;
+  overflow: hidden;
+}
+.notification-panel.show { display: flex; }
+.notif-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(200,180,240,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.notif-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.notif-badge {
+  background: linear-gradient(135deg, #f43f5e, #ec4899);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.notif-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.notif-item {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(200,180,240,0.15);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.notif-item:hover { background: rgba(139,92,246,0.06); }
+.notif-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.notif-icon.security { background: rgba(244,63,94,0.12); }
+.notif-icon.simulation { background: rgba(139,92,246,0.12); }
+.notif-icon.system { background: rgba(59,130,246,0.12); }
+.notif-icon.info { background: rgba(20,184,166,0.12); }
+.notif-content { flex: 1; min-width: 0; }
+.notif-item-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.notif-item-message {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.notif-item-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.notif-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── Profile Menu ────────────────────────────────────────────────── */
+.profile-menu {
+  position: absolute;
+  top: 60px;
+  right: 20px;
+  width: 240px;
+  background: rgba(255,255,255,0.98);
+  backdrop-filter: blur(32px);
+  border: 1px solid rgba(200,180,240,0.4);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(100,60,140,0.25);
+  display: none;
+  flex-direction: column;
+  z-index: 2000;
+  overflow: hidden;
+}
+.profile-menu.show { display: flex; }
+.profile-menu-header {
+  padding: 16px;
+  border-bottom: 1px solid rgba(200,180,240,0.25);
+  text-align: center;
+}
+.profile-menu-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffb89a, #a78bfa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  margin: 0 auto 10px;
+  border: 3px solid rgba(255,255,255,0.9);
+  box-shadow: 0 4px 16px rgba(167,139,250,0.3);
+}
+.profile-menu-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.profile-menu-role {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.profile-menu-items {
+  padding: 8px 0;
+}
+.profile-menu-item {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font);
+}
+.profile-menu-item:hover {
+  background: rgba(139,92,246,0.08);
+  color: var(--text-primary);
+}
+.profile-menu-item svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+/* ── Notification badge on bell ──────────────────────────────────── */
+.nav-icon-btn { position: relative; }
+.notif-badge-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 8px rgba(239,68,68,0.6);
+  animation: pulse-red 2s infinite;
+}
+@keyframes pulse-red { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.7;transform:scale(1.3)} }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════
+     NAVIGATION
+════════════════════════════════════════════════════════════════ -->
+<nav class="nav">
+  <a class="nav-logo" href="#">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 20 20"><path d="M10 1L2 5v5c0 5.25 3.5 10.15 8 11 4.5-.85 8-5.75 8-11V5L10 1zm0 9a2 2 0 110-4 2 2 0 010 4zm0 5c-2.21 0-4.19-1.12-5.38-2.84.03-.14.38-.16 1.38-.16 1.5 0 3 .5 4 1 1-.5 2.5-1 4-1 1 0 1.35.02 1.38.16C14.19 13.88 12.21 15 10 15z"/></svg>
+    </div>
+    <div>
+      <div class="nav-logo-name">RouteGuard</div>
+      <div class="nav-logo-tag">Security Intelligence Platform</div>
+    </div>
+  </a>
+
+  <div class="nav-links">
+    <button class="nav-link active">Dashboard</button>
+    <button class="nav-link">Topology</button>
+    <button class="nav-link">Attack Paths</button>
+    <button class="nav-link">Simulation</button>
+    <button class="nav-link">Lab</button>
+    <button class="nav-link">Audit Logs</button>
+  </div>
+
+  <div class="nav-actions">
+    <div class="nav-search">
+      <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3a6 6 0 100 12A6 6 0 009 3zM1 9a8 8 0 1114.32 4.906l3.387 3.387a1 1 0 01-1.414 1.414l-3.387-3.387A8 8 0 011 9z" clip-rule="evenodd"/></svg>
+      Search nodes…
+    </div>
+    <div class="nav-status-dot"></div>
+    <div class="nav-icon-btn" onclick="resetNetwork()" title="Reset Network">
+      <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+    </div>
+    <div class="nav-icon-btn" onclick="toggleNotifications()" title="Notifications" id="notif-bell-btn">
+      <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/></svg>
+      <div class="notif-badge-dot" id="notif-badge" style="display:none;"></div>
+    </div>
+    <span id="nav-user-name">Loading…</span>
+    <div class="nav-avatar" id="nav-avatar" onclick="toggleProfileMenu()" title="Profile Menu" style="cursor:pointer;">A</div>
+  </div>
+
+  <!-- Notification Panel -->
+  <div class="notification-panel" id="notification-panel">
+    <div class="notif-header">
+      <div class="notif-title">Notifications</div>
+      <div class="notif-badge" id="notif-count-badge">0</div>
+    </div>
+    <div class="notif-list" id="notif-list">
+      <div class="notif-empty">Loading notifications...</div>
+    </div>
+  </div>
+
+  <!-- Profile Menu -->
+  <div class="profile-menu" id="profile-menu">
+    <div class="profile-menu-header">
+      <div class="profile-menu-avatar" id="profile-avatar-large">A</div>
+      <div class="profile-menu-name" id="profile-name">Admin</div>
+      <div class="profile-menu-role" id="profile-role">Administrator</div>
+    </div>
+    <div class="profile-menu-items">
+      <button class="profile-menu-item" onclick="viewProfile()">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+        View Profile
+      </button>
+      <button class="profile-menu-item" onclick="navigateTo('audit-logs')">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>
+        Audit Logs
+      </button>
+      <button class="profile-menu-item" onclick="logout()">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd"/></svg>
+        Sign Out
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ════════════════════════════════════════════════════════════════
+     PAGE
+════════════════════════════════════════════════════════════════ -->
+<div class="page">
+
+<!-- ── HERO ─────────────────────────────────────────────────────── -->
+<section class="hero" id="section-dashboard">
+  <div class="hero-bg">
+  <!-- Ambient 3D orbs -->
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="orb orb-4"></div>
+  <div class="orb orb-5"></div>
+  <div class="ring-shape ring-1"></div>
+  <div class="ring-shape ring-2"></div>
+
+  <!-- Hero left -->
+  <div class="hero-left">
+    <div class="hero-eyebrow">
+      <span class="hero-eyebrow-dot"></span>
+      Security Engine Active
+    </div>
+    <h1 class="hero-title">
+      Intelligent Network<br>
+      <span>Security Analysis</span>
+    </h1>
+    <p class="hero-sub">
+      Real-time attack-path detection, security-aware routing, and
+      what-if compromise simulation for your network topology.
+    </p>
+
+    <div class="hero-stats">
+      <div class="stat-pill">
+        <div class="stat-pill-val" id="stat-nodes">—</div>
+        <div class="stat-pill-label">Network Nodes</div>
+      </div>
+      <div class="stat-pill">
+        <div class="stat-pill-val" id="stat-edges">—</div>
+        <div class="stat-pill-label">Active Links</div>
+      </div>
+      <div class="stat-pill">
+        <div class="stat-pill-val" id="stat-paths">—</div>
+        <div class="stat-pill-label">Attack Paths</div>
+      </div>
+      <div class="stat-pill">
+        <div class="stat-pill-val" id="stat-spofs">—</div>
+        <div class="stat-pill-label">SPOFs Found</div>
+      </div>
+    </div>
+
+    <div class="hero-btns">
+      <button class="btn-primary" onclick="runRouting()">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        Analyze Routes
+      </button>
+      <button class="btn-ghost" onclick="loadFindings()">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+        Security Findings
+      </button>
+    </div>
+  </div>
+
+  <!-- Hero right: floating glass control panel -->
+  <div class="hero-panel">
+    <div>
+      <div class="panel-title">Security Analysis Console</div>
+      <div class="panel-sub">Configure and run network analyses</div>
+    </div>
+
+    <hr class="panel-sep">
+
+    <div>
+      <div class="panel-section-label">Route Configuration</div>
+      <div class="panel-input-row">
+        <div class="panel-input-wrap">
+          <label>Source</label>
+          <input id="source-node" class="panel-input" type="text" value="internet" placeholder="node id">
+        </div>
+        <div class="panel-input-wrap">
+          <label>Target</label>
+          <input id="target-node" class="panel-input" type="text" value="db01" placeholder="node id">
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-btn-grid">
+      <button class="panel-btn panel-btn-violet" onclick="runRouting()">⇌ Routes</button>
+      <button class="panel-btn panel-btn-rose"   onclick="runAttackPaths()">⚡ Attack</button>
+      <button class="panel-btn panel-btn-teal"   onclick="runDijkstra()">◈ Dijkstra</button>
+      <button class="panel-btn panel-btn-amber"  onclick="runReachability()">◉ Reach</button>
+    </div>
+
+    <hr class="panel-sep">
+
+    <div>
+      <div class="panel-section-label">What-If Simulator</div>
+      <div class="panel-input-row" style="margin-bottom:10px;">
+        <div class="panel-input-wrap">
+          <label>Action</label>
+          <select id="sim-action" class="panel-select">
+            <option value="COMPROMISE_NODE">💀 Compromise</option>
+            <option value="DISABLE_NODE">🚫 Disable Node</option>
+            <option value="DISABLE_LINK">✂ Disable Link</option>
+          </select>
+        </div>
+        <div class="panel-input-wrap">
+          <label>Target Node</label>
+          <input id="sim-target" class="panel-input" type="text" value="app01">
+        </div>
+      </div>
+      <button class="panel-btn panel-btn-full" onclick="runSimulation()">▶ Execute Simulation</button>
+    </div>
+
+    <div class="syslog" id="status-log">Initializing RouteGuard engine…</div>
+  </div>
+</section>
+
+<!-- ── NETWORK GRAPH ─────────────────────────────────────────────── -->
+<section class="graph-section" id="section-topology">
+  <div class="section-header">
+    <div>
+      <div class="section-title">Network Topology Graph</div>
+      <div class="section-sub">Click any node to inspect properties • Run analysis to highlight paths</div>
+    </div>
+    <div class="graph-legend">
+      <span class="leg-item"><span class="leg-dot" style="background:#3b82f6"></span>Internet</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#f59e0b"></span>DMZ</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#a855f7"></span>Application</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#ef4444"></span>Database</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#10b981"></span>Management</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#f43f5e"></span>⚠ Compromised</span>
+    </div>
+  </div>
+
+  <div class="graph-card" id="graph-card">
+    <div class="graph-toolbar">
+      <span class="graph-tool-label">Controls:</span>
+      <button class="graph-tool-btn" onclick="zoomIn()" title="Zoom In">+</button>
+      <button class="graph-tool-btn" onclick="zoomOut()" title="Zoom Out">−</button>
+      <button class="graph-tool-btn" onclick="resetZoom()" title="Fit to View" style="font-size: 14px;">⊙</button>
+      <div class="graph-tool-sep"></div>
+      <span class="graph-tool-label" style="margin-left: 0;">Drag to pan • Click nodes for details</span>
+      <button class="graph-maximize-btn" onclick="toggleGraphMaximize()" id="graph-maximize-btn">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z"/></svg>
+        Maximize
+      </button>
+    </div>
+    <div class="graph-scroll-container">
+      <div id="network-graph" style="height:520px;"></div>
+    </div>
+    <div class="path-ribbon" id="path-ribbon"></div>
+    <div class="node-info-strip" id="node-info"></div>
+  </div>
+</section>
+
+<!-- ── DASHBOARD CARDS ───────────────────────────────────────────── -->
+<section class="dashboard" id="section-dashboard-cards">
+  <div class="section-header" style="margin-bottom:18px;">
+    <div>
+      <div class="section-title">Security Intelligence Dashboard</div>
+      <div class="section-sub">Live metrics, risk indicators, and system status</div>
+    </div>
+  </div>
+
+  <div class="cards-grid">
+
+    <!-- ── Card 1: Total Nodes ──────────────────────────── -->
+    <div class="dcard col-3 accent-violet">
+      <div class="dcard-label">
+        <div class="dcard-icon" style="background:rgba(139,92,246,0.12);">🌐</div>
+        Network Nodes
+      </div>
+      <div class="dcard-val" id="dc-nodes">—</div>
+      <div class="dcard-sub">Active in topology</div>
+      <div class="dcard-change change-up" id="dc-nodes-enc">— encrypted links</div>
+      <div class="sparkline" id="spark-nodes">
+        <div class="spark-bar" style="height:40%"></div>
+        <div class="spark-bar" style="height:60%"></div>
+        <div class="spark-bar" style="height:50%"></div>
+        <div class="spark-bar" style="height:80%"></div>
+        <div class="spark-bar" style="height:70%"></div>
+        <div class="spark-bar" style="height:90%"></div>
+        <div class="spark-bar" style="height:100%"></div>
+      </div>
+    </div>
+
+    <!-- ── Card 2: Attack Paths ─────────────────────────── -->
+    <div class="dcard col-3 accent-rose">
+      <div class="dcard-label">
+        <div class="dcard-icon" style="background:rgba(244,63,94,0.10);">⚡</div>
+        Attack Paths
+      </div>
+      <div class="dcard-val" id="dc-attack">—</div>
+      <div class="dcard-sub">Detected routes to target</div>
+      <div class="dcard-change" id="dc-attack-risk">—</div>
+    </div>
+
+    <!-- ── Card 3: Security Score ───────────────────────── -->
+    <div class="dcard col-3 accent-teal">
+      <div class="dcard-label">
+        <div class="dcard-icon" style="background:rgba(20,184,166,0.10);">🛡️</div>
+        Security Score
+      </div>
+      <div class="dcard-val" id="dc-score">—</div>
+      <div class="dcard-sub">Overall risk posture</div>
+      <div class="dcard-change" id="dc-score-label">Run analysis to calculate</div>
+    </div>
+
+    <!-- ── Card 4: SPOFs ────────────────────────────────── -->
+    <div class="dcard col-3 accent-amber">
+      <div class="dcard-label">
+        <div class="dcard-icon" style="background:rgba(245,158,11,0.10);">⚠️</div>
+        Single Points of Failure
+      </div>
+      <div class="dcard-val" id="dc-spofs">—</div>
+      <div class="dcard-sub">Critical bottleneck nodes</div>
+      <div class="dcard-change change-down" id="dc-spofs-sub">—</div>
+    </div>
+
+    <!-- ── Card 5: Radial risk + zone breakdown ─────────── -->
+    <div class="dcard col-5 accent-violet">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(139,92,246,0.10);">📊</div> Risk Distribution by Zone</div>
+      <div class="radial-wrap">
+        <svg class="radial-svg" width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r="44" fill="none" stroke="rgba(200,180,240,0.2)" stroke-width="10"/>
+          <circle id="radial-arc" cx="55" cy="55" r="44" fill="none"
+            stroke="url(#radGrad)" stroke-width="10"
+            stroke-dasharray="276" stroke-dashoffset="276"
+            stroke-linecap="round" transform="rotate(-90 55 55)"
+            style="transition: stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1)"/>
+          <defs>
+            <linearGradient id="radGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#8b5cf6"/>
+              <stop offset="100%" stop-color="#f43f5e"/>
+            </linearGradient>
+          </defs>
+          <text x="55" y="51" text-anchor="middle" font-size="16" font-weight="800" fill="#1e1140" id="radial-val">—</text>
+          <text x="55" y="64" text-anchor="middle" font-size="9" fill="#9488b0">Risk Score</text>
+        </svg>
+        <div style="flex:1;">
+          <div id="zone-bars">
+            <div class="prog-row">
+              <div class="prog-header"><span class="prog-label">Internet</span><span class="prog-val">—</span></div>
+              <div class="prog-track"><div class="prog-fill" style="width:0%;background:linear-gradient(90deg,#3b82f6,#06b6d4)"></div></div>
+            </div>
+            <div class="prog-row">
+              <div class="prog-header"><span class="prog-label">DMZ</span><span class="prog-val">—</span></div>
+              <div class="prog-track"><div class="prog-fill" style="width:0%;background:linear-gradient(90deg,#f59e0b,#f97316)"></div></div>
+            </div>
+            <div class="prog-row">
+              <div class="prog-header"><span class="prog-label">Application</span><span class="prog-val">—</span></div>
+              <div class="prog-track"><div class="prog-fill" style="width:0%;background:linear-gradient(90deg,#a855f7,#6366f1)"></div></div>
+            </div>
+            <div class="prog-row">
+              <div class="prog-header"><span class="prog-label">Database</span><span class="prog-val">—</span></div>
+              <div class="prog-track"><div class="prog-fill" style="width:0%;background:linear-gradient(90deg,#ef4444,#f43f5e)"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Card 6: Node status list ─────────────────────── -->
+    <div class="dcard col-4 accent-blue">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(59,130,246,0.10);">📡</div> Node Status</div>
+      <div class="status-list" id="node-status-list">
+        <div style="color:var(--text-muted);font-size:12px;">Loading node statuses…</div>
+      </div>
+    </div>
+
+    <!-- ── Card 7: Security findings ────────────────────── -->
+    <div class="dcard col-3 accent-rose">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(244,63,94,0.10);">🔍</div> Security Findings</div>
+      <div id="findings-list" style="max-height:220px;overflow-y:auto;">
+        <div style="color:var(--text-muted);font-size:12px;">Click Security Findings to load…</div>
+      </div>
+    </div>
+
+    <!-- ── Card 8: Results tabs (wide) ──────────────────── -->
+    <div class="dcard col-8 accent-teal">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(20,184,166,0.10);">📋</div> Analysis Results</div>
+      <div class="tab-row">
+        <button class="tab-btn active" onclick="switchTab('raw',this)">Raw Output</button>
+        <button class="tab-btn"        onclick="switchTab('findings',this)">Findings</button>
+        <button class="tab-btn"        onclick="switchTab('apaths',this)">Attack Paths</button>
+      </div>
+      <div id="tab-raw" class="tab-pane active">
+        <pre class="result-output" id="output-display">Run an analysis above to see detailed results here.</pre>
+      </div>
+      <div id="tab-findings" class="tab-pane">
+        <div id="tab-findings-container" style="max-height:200px;overflow-y:auto;">
+          <p style="color:var(--text-muted);font-size:12px;">Load security findings first.</p>
+        </div>
+      </div>
+      <div id="tab-apaths" class="tab-pane">
+        <div id="tab-apaths-container" style="max-height:200px;overflow-y:auto;">
+          <p style="color:var(--text-muted);font-size:12px;">Run ⚡ Attack Paths to populate this view.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Card 9: Network lab ───────────────────────────── -->
+    <div class="dcard col-4 accent-amber">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(245,158,11,0.10);">🔬</div> Network Algorithm Lab</div>
+      <div class="lab-grid" style="margin-top:4px;">
+        <button class="lab-btn" onclick="runDistanceVector()"><span class="lab-btn-icon">📐</span>Distance Vector</button>
+        <button class="lab-btn" onclick="runCRC()"><span class="lab-btn-icon">🔢</span>CRC Demo</button>
+        <button class="lab-btn" onclick="runLeakyBucket()"><span class="lab-btn-icon">🪣</span>Leaky Bucket</button>
+      </div>
+      <div style="margin-top:14px;">
+        <div class="panel-section-label" style="margin-bottom:6px;">Bit Stuffing Demo</div>
+        <button class="panel-btn panel-btn-slate" style="width:100%;border-radius:12px;" onclick="runBitStuffing()">▷ Run Bit Stuffing</button>
+      </div>
+    </div>
+
+  </div><!-- /cards-grid -->
+</section>
+
+<!-- ── ATTACK PATHS VIEW ─────────────────────────────────────────── -->
+<section class="dashboard" id="section-attack-paths" style="display:none;">
+  <div class="section-header" style="margin-bottom:18px;">
+    <div>
+      <div class="section-title">Attack Path Analysis</div>
+      <div class="section-sub">Detect and visualize potential attack vectors from compromised nodes to critical assets</div>
+    </div>
+  </div>
+
+  <div class="cards-grid">
+    <div class="dcard col-12 accent-rose">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(244,63,94,0.10);">⚡</div> Attack Path Finder</div>
+      <div style="margin-top:10px;">
+        <div class="panel-input-row">
+          <div class="panel-input-wrap">
+            <label>Source Node (Attacker)</label>
+            <input class="panel-input" type="text" id="attack-source" placeholder="e.g., INET-GW" />
+          </div>
+          <div class="panel-input-wrap">
+            <label>Target Node (Asset)</label>
+            <input class="panel-input" type="text" id="attack-target" placeholder="e.g., DB-PRIMARY" />
+          </div>
+        </div>
+        <button class="panel-btn panel-btn-rose" style="width:100%; margin-top:12px;" onclick="runAttackPaths()">⚡ Find Attack Paths</button>
+      </div>
+    </div>
+
+    <div class="dcard col-8 accent-rose">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(244,63,94,0.10);">🔍</div> Discovered Attack Paths</div>
+      <div id="attack-paths-results" style="max-height:400px;overflow-y:auto;margin-top:10px;">
+        <p style="color:var(--text-muted);font-size:13px;">Run attack path analysis to discover potential security vulnerabilities and attack vectors.</p>
+      </div>
+    </div>
+
+    <div class="dcard col-4 accent-amber">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(245,158,11,0.10);">📊</div> Risk Summary</div>
+      <div id="attack-risk-summary" style="margin-top:10px;">
+        <p style="color:var(--text-muted);font-size:13px;">No analysis completed yet.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SIMULATION VIEW ───────────────────────────────────────────── -->
+<section class="dashboard" id="section-simulation" style="display:none;">
+  <div class="section-header" style="margin-bottom:18px;">
+    <div>
+      <div class="section-title">What-If Security Simulator</div>
+      <div class="section-sub">Test security scenarios by simulating node compromises and link failures</div>
+    </div>
+  </div>
+
+  <div class="cards-grid">
+    <div class="dcard col-5 accent-violet">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(139,92,246,0.10);">🎯</div> Simulation Controls</div>
+      <div style="margin-top:10px;">
+        <div class="panel-section-label">Simulation Type</div>
+        <select class="panel-select" id="sim-action" style="margin-bottom:12px;">
+          <option value="compromise">Compromise Node</option>
+          <option value="isolate">Isolate Node</option>
+          <option value="sever-link">Sever Link</option>
+          <option value="restore">Restore Network</option>
+        </select>
+
+        <div class="panel-section-label">Target Node/Link</div>
+        <input class="panel-input" type="text" id="sim-target" placeholder="e.g., WEB-SERVER-01" style="margin-bottom:12px;" />
+
+        <button class="panel-btn panel-btn-full" onclick="runSimulation()">▶ Execute Simulation</button>
+      </div>
+    </div>
+
+    <div class="dcard col-7 accent-teal">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(20,184,166,0.10);">📋</div> Simulation Results</div>
+      <div id="simulation-results" style="max-height:400px;overflow-y:auto;margin-top:10px;">
+        <p style="color:var(--text-muted);font-size:13px;">Configure and run a simulation to see the impact on your network security posture.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── LAB VIEW ──────────────────────────────────────────────────── -->
+<section class="dashboard" id="section-lab" style="display:none;">
+  <div class="section-header" style="margin-bottom:18px;">
+    <div>
+      <div class="section-title">Network Algorithm Laboratory</div>
+      <div class="section-sub">Explore routing algorithms, error detection, and traffic management protocols</div>
+    </div>
+  </div>
+
+  <div class="cards-grid">
+    <div class="dcard col-4 accent-violet">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(139,92,246,0.10);">📐</div> Distance Vector Routing</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:10px 0;">Simulate the Bellman-Ford algorithm for distributed routing table computation.</p>
+      <button class="lab-btn" style="width:100%;" onclick="runDistanceVector()"><span class="lab-btn-icon">📐</span>Run Distance Vector</button>
+    </div>
+
+    <div class="dcard col-4 accent-teal">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(20,184,166,0.10);">🔢</div> CRC Error Detection</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:10px 0;">Demonstrate Cyclic Redundancy Check for data integrity verification.</p>
+      <button class="lab-btn" style="width:100%;" onclick="runCRC()"><span class="lab-btn-icon">🔢</span>Run CRC Demo</button>
+    </div>
+
+    <div class="dcard col-4 accent-amber">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(245,158,11,0.10);">🪣</div> Leaky Bucket Algorithm</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:10px 0;">Traffic shaping and rate limiting simulation for QoS management.</p>
+      <button class="lab-btn" style="width:100%;" onclick="runLeakyBucket()"><span class="lab-btn-icon">🪣</span>Run Leaky Bucket</button>
+    </div>
+
+    <div class="dcard col-6 accent-rose">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(244,63,94,0.10);">🔧</div> Bit Stuffing Protocol</div>
+      <p style="font-size:13px;color:var(--text-muted);margin:10px 0;">Frame boundary detection and byte stuffing for data link layer.</p>
+      <button class="panel-btn panel-btn-slate" style="width:100%;border-radius:12px;margin-top:10px;" onclick="runBitStuffing()">▷ Run Bit Stuffing</button>
+    </div>
+
+    <div class="dcard col-6 accent-blue">
+      <div class="dcard-label"><div class="dcard-icon" style="background:rgba(59,130,246,0.10);">📋</div> Lab Results</div>
+      <div id="lab-results-output" class="result-output" style="max-height:180px;">
+        Run any algorithm above to see detailed results and step-by-step execution.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── AUDIT LOGS VIEW ───────────────────────────────────────────── -->
+<section class="dashboard" id="section-audit-logs" style="display:none;">
+  <div class="section-header" style="margin-bottom:18px;">
+    <div>
+      <div class="section-title">Security Audit Logs</div>
+      <div class="section-sub">Track all security events, policy changes, and system activities</div>
+    </div>
+  </div>
+
+  <div class="cards-grid">
+    <div class="dcard col-12 accent-blue">
+      <div class="dcard-label">
+        <div class="dcard-icon" style="background:rgba(59,130,246,0.10);">📜</div>
+        Activity Log
+        <button class="panel-btn panel-btn-slate" style="margin-left:auto;padding:6px 14px;font-size:12px;" onclick="loadAuditLogs()">
+          🔄 Refresh Logs
+        </button>
+      </div>
+      <div id="audit-logs-display" style="max-height:500px;overflow-y:auto;margin-top:10px;">
+        <div style="font-family:var(--mono);font-size:12px;line-height:1.8;color:#5b21b6;">
+          <div style="padding:8px;border-bottom:1px solid rgba(200,180,240,0.2);">
+            <strong>[Loading...]</strong> <span style="color:#3b82f6;">[SYSTEM]</span> Initializing audit log view
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /page -->
+
+<!-- ════════════════════════════════════════════════════════════════
+     JAVASCRIPT — ALL API WIRING
+════════════════════════════════════════════════════════════════ -->
+<script>
+/* ─── Config ─────────────────────────────────────────────────── */
+const API_BASE  = window.location.origin + "/api";
+let jwtToken    = "";
+let visNetwork  = null;
+let visNodes    = null;
+let visEdges    = null;
+let rawNetData  = null;
+
+/* ─── Zone colour map ────────────────────────────────────────── */
+const ZONE_COLOR = {
+  INTERNET:    { bg:"#dbeafe", border:"#3b82f6", font:"#1e3a8a" },
+  DMZ:         { bg:"#fef3c7", border:"#f59e0b", font:"#78350f" },
+  APPLICATION: { bg:"#f3e8ff", border:"#a855f7", font:"#4c1d95" },
+  DATABASE:    { bg:"#fee2e2", border:"#ef4444", font:"#7f1d1d" },
+  MANAGEMENT:  { bg:"#d1fae5", border:"#10b981", font:"#064e3b" },
+  PRIVATE:     { bg:"#e0e7ff", border:"#6366f1", font:"#1e1b4b" },
+  DEFAULT:     { bg:"#f1f5f9", border:"#94a3b8", font:"#334155" },
+};
+function zoneStyle(zone, compromised) {
+  if (compromised) return { bg:"#fee2e2", border:"#f43f5e", font:"#7f1d1d" };
+  return ZONE_COLOR[zone] || ZONE_COLOR.DEFAULT;
+}
+
+/* ─── Status log ─────────────────────────────────────────────── */
+function log(msg, isErr=false) {
+  const box = document.getElementById("status-log");
+  if (!box) return;
+  const ts  = new Date().toLocaleTimeString();
+  const col = isErr ? "#dc2626" : "#6d28d9";
+  box.innerHTML += `<span style="color:${col}">[${ts}] ${msg}</span>\n`;
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ─── Tab switching ──────────────────────────────────────────── */
+function switchTab(name, btn) {
+  document.querySelectorAll(".tab-pane").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t => t.classList.remove("active"));
+  document.getElementById("tab-" + name).classList.add("active");
+  btn.classList.add("active");
+}
+
+/* ─── Authenticate ───────────────────────────────────────────── */
+async function authenticate() {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "AdminSecurePassword123!" })
+  });
+  if (!res.ok) throw new Error(`Auth failed HTTP ${res.status}`);
+  const data = await res.json();
+  jwtToken = data.access_token;
+  document.getElementById("nav-user-name").textContent = "admin";
+  document.getElementById("nav-avatar").textContent = "A";
+
+  // Load profile and notifications
+  await loadUserProfile();
+  await loadNotifications();
+
+  return data;
+}
+
+/* ─── User Profile ───────────────────────────────────────────── */
+async function loadUserProfile() {
+  try {
+    const profile = await api("/user/profile");
+    document.getElementById("nav-user-name").textContent = profile.username;
+    document.getElementById("nav-avatar").textContent = profile.initials;
+    document.getElementById("profile-avatar-large").textContent = profile.initials;
+    document.getElementById("profile-name").textContent = profile.username;
+    document.getElementById("profile-role").textContent = profile.role.replace("_", " ");
+  } catch(e) {
+    console.error("Failed to load profile:", e);
+  }
+}
+
+/* ─── Notifications ──────────────────────────────────────────── */
+let notificationsData = [];
+
+async function loadNotifications() {
+  try {
+    const data = await api("/notifications");
+    notificationsData = data.notifications || [];
+    renderNotifications();
+    updateNotificationBadge(data.unread_count || 0);
+  } catch(e) {
+    console.error("Failed to load notifications:", e);
+  }
+}
+
+function renderNotifications() {
+  const container = document.getElementById("notif-list");
+  if (!notificationsData || notificationsData.length === 0) {
+    container.innerHTML = '<div class="notif-empty">No notifications yet</div>';
+    return;
+  }
+
+  const icons = {
+    security: "🔐",
+    simulation: "⚡",
+    system: "⚙️",
+    info: "ℹ️"
+  };
+
+  container.innerHTML = notificationsData.map(n => `
+    <div class="notif-item" onclick="markNotificationRead('${n.id}')">
+      <div class="notif-icon ${n.type}">${icons[n.type] || icons.info}</div>
+      <div class="notif-content">
+        <div class="notif-item-title">${n.title}</div>
+        <div class="notif-item-message">${n.message}</div>
+        <div class="notif-item-time">${formatTimestamp(n.timestamp)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateNotificationBadge(count) {
+  const badge = document.getElementById("notif-badge");
+  const countBadge = document.getElementById("notif-count-badge");
+
+  if (count > 0) {
+    badge.style.display = "block";
+    countBadge.textContent = count;
+  } else {
+    badge.style.display = "none";
+    countBadge.textContent = "0";
+  }
+}
+
+function toggleNotifications() {
+  const panel = document.getElementById("notification-panel");
+  const profileMenu = document.getElementById("profile-menu");
+
+  // Close profile menu if open
+  profileMenu.classList.remove("show");
+
+  // Toggle notification panel
+  panel.classList.toggle("show");
+}
+
+function markNotificationRead(notifId) {
+  // Mark as read in local state
+  const notif = notificationsData.find(n => n.id === notifId);
+  if (notif) {
+    notif.read = true;
+    const unreadCount = notificationsData.filter(n => !n.read).length;
+    updateNotificationBadge(unreadCount);
+  }
+}
+
+function toggleProfileMenu() {
+  const menu = document.getElementById("profile-menu");
+  const notifPanel = document.getElementById("notification-panel");
+
+  // Close notification panel if open
+  notifPanel.classList.remove("show");
+
+  // Toggle profile menu
+  menu.classList.toggle("show");
+}
+
+function viewProfile() {
+  toggleProfileMenu();
+  alert("Profile view - placeholder for future implementation");
+}
+
+function logout() {
+  jwtToken = "";
+  document.getElementById("nav-user-name").textContent = "Loading…";
+  document.getElementById("nav-avatar").textContent = "A";
+  toggleProfileMenu();
+  alert("Logged out. Refresh page to log in again.");
+}
+
+function formatTimestamp(isoString) {
+  try {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000); // seconds
+
+    if (diff < 60) return "Just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+    return date.toLocaleDateString();
+  } catch(e) {
+    return "Recently";
+  }
+}
+
+// Close panels when clicking outside
+document.addEventListener("click", (e) => {
+  const notifPanel = document.getElementById("notification-panel");
+  const profileMenu = document.getElementById("profile-menu");
+  const notifBtn = document.getElementById("notif-bell-btn");
+  const avatar = document.getElementById("nav-avatar");
+
+  if (notifPanel && !notifPanel.contains(e.target) && !notifBtn.contains(e.target)) {
+    notifPanel.classList.remove("show");
+  }
+
+  if (profileMenu && !profileMenu.contains(e.target) && !avatar.contains(e.target)) {
+    profileMenu.classList.remove("show");
+  }
+});
+
+
+/* ─── Generic fetch ──────────────────────────────────────────── */
+async function api(path, opts={}) {
+  const res = await fetch(API_BASE + path, {
+    ...opts,
+    headers: { "Authorization": `Bearer ${jwtToken}`, ...(opts.headers||{}) }
+  });
+  if (!res.ok) { const t=await res.text(); throw new Error(`HTTP ${res.status}: ${t}`); }
+  return res.json();
+}
+
+/* ─── Show JSON ──────────────────────────────────────────────── */
+function showJSON(data) {
+  document.getElementById("output-display").textContent = JSON.stringify(data, null, 2);
+  // Switch to raw tab
+  document.querySelectorAll(".tab-pane").forEach(t=>t.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
+  document.getElementById("tab-raw").classList.add("active");
+  document.querySelector(".tab-btn").classList.add("active");
+}
+
+/* ─── Node data map (separate from vis nodes — fixes Bug 6: _raw on vis objects) */
+const nodeDataMap = {};
+
+/* ─── Build vis datasets ─────────────────────────────────────── */
+function buildDataSets(data) {
+  const nodesArr = data.nodes.map(n => {
+    const s = zoneStyle(n.zone, n.compromised);
+    nodeDataMap[n.id] = n;  // store separately, NOT in the vis node object
+    return {
+      id:    n.id,
+      label: `${n.name}\n[${n.id}]`,
+      title: `<b>${n.name}</b><br>Zone: ${n.zone}<br>Type: ${n.type}<br>Trust: ${n.trust_level}<br>Criticality: ${n.criticality}${n.compromised?'<br><span style="color:#ef4444">&#9888; COMPROMISED</span>':""}`,
+      color: {
+        background: s.bg, border: s.border,
+        highlight: { background: s.border, border: "#ffffff" },
+        hover:     { background: s.bg,     border: s.border  }
+      },
+      // Fix 2: font.multi='html' not supported in vis 9.1.2 — removed
+      font:  { color: s.font, size: 11, face:"Consolas,monospace" },
+      // Fix 5: 'database' shape broken — use safe shapes only
+      shape: n.type==="FIREWALL" ? "diamond"      :
+             n.type==="DATABASE" ? "dot"           :
+             n.type==="ROUTER"   ? "triangleDown"  :
+             n.type==="INTERNET" ? "circle"        : "box",
+      size:  n.type==="DATABASE" ? 22 : 26,
+      borderWidth: n.compromised ? 3 : 1.5,
+      shadow: { enabled:true, color: s.border+"44", size:12, x:0, y:3 }
+      // Fix 3: NO _raw or extra props — vis rejects unknown properties on node objects
+    };
+  });
+
+  const edgesArr = data.edges.map((e,i) => ({
+    id:    e.id || `e${i}`,
+    from:  e.source, to: e.destination,
+    label: `${e.cost}`,
+    title: `Cost: ${e.cost} | Encrypted: ${e.encrypted} | ${(e.allowed_protocols||[]).join(",")}`,
+    color: { color: e.encrypted?"#c7d2fe":"#fecaca", highlight:"#8b5cf6", hover:"#a78bfa" },
+    width: e.encrypted ? 2 : 3,
+    dashes: !e.encrypted,
+    arrows: { to:{ enabled:true, scaleFactor:0.55 } },
+    font:   { color:"#9488b0", size:9, align:"middle" },
+    smooth: { type:"curvedCW", roundness:0.12 }
+  }));
+  return { nodesArr, edgesArr };
+}
+
+/* ─── Render / update vis graph ──────────────────────────────── */
+function renderGraph(data) {
+  rawNetData = data;
+  updateStatCards(data);
+  updateNodeStatusCard(data);
+  const { nodesArr, edgesArr } = buildDataSets(data);
+
+  if (visNetwork) {
+    visNodes.clear(); visNodes.add(nodesArr);
+    visEdges.clear(); visEdges.add(edgesArr);
+    clearPathHighlight();
+    return;
+  }
+
+  visNodes = new vis.DataSet(nodesArr);
+  visEdges = new vis.DataSet(edgesArr);
+  const container = document.getElementById("network-graph");
+  const options = {
+    autoResize: true, height:"100%", width:"100%",
+    nodes: { borderWidth:1.5, size:26, margin:{top:7,bottom:7,left:9,right:9}, font:{size:12} },
+    edges: { smooth:{ type:"curvedCW", roundness:0.12 }, length:200 },
+    layout: {
+      hierarchical: {
+        enabled: true,
+        direction: 'LR',
+        sortMethod: 'directed',
+        levelSeparation: 250,
+        nodeSpacing: 180,
+        treeSpacing: 220,
+        blockShifting: true,
+        edgeMinimization: true,
+        parentCentralization: true
+      }
+    },
+    physics: {
+      enabled: false
+    },
+    interaction: {
+      hover:true,
+      tooltipDelay:200,
+      zoomView:false,
+      dragView:true,
+      navigationButtons:false,
+      keyboard: {
+        enabled: true,
+        bindToWindow: false
+      }
+    }
+  };
+
+  visNetwork = new vis.Network(container, { nodes:visNodes, edges:visEdges }, options);
+
+  // No stabilization needed since we're using hierarchical layout
+  visNetwork.on("afterDrawing", () => {
+    if (!visNetwork.getScale) return;
+    // Fit on first render
+    setTimeout(() => {
+      if (visNetwork) visNetwork.fit();
+    }, 100);
+  });
+
+  visNetwork.on("click", params => {
+    if (params.nodes.length > 0) {
+      const raw = nodeDataMap[params.nodes[0]];  // use nodeDataMap, not _raw on vis node
+      if (raw) showNodeInfo(raw);
+    } else {
+      document.getElementById("node-info").classList.remove("show");
+    }
+  });
+  log(`Graph rendered: ${nodesArr.length} nodes, ${edgesArr.length} edges.`);
+}
+
+/* ─── Node info strip ────────────────────────────────────────── */
+function showNodeInfo(n) {
+  const el = document.getElementById("node-info");
+  const comp = n.compromised
+    ? `<span class="ni-comp">⚠ COMPROMISED</span>`
+    : `<span class="ni-clean">✓ Clean</span>`;
+  el.innerHTML = `
+    <span><span class="ni-prop">ID: </span><span class="ni-val">${n.id}</span></span>
+    <span><span class="ni-prop">Name: </span><span class="ni-val">${n.name}</span></span>
+    <span><span class="ni-prop">Zone: </span><span class="ni-val">${n.zone}</span></span>
+    <span><span class="ni-prop">Type: </span><span class="ni-val">${n.type}</span></span>
+    <span><span class="ni-prop">Trust: </span><span class="ni-val">${n.trust_level}</span></span>
+    <span><span class="ni-prop">Criticality: </span><span class="ni-val">${n.criticality}</span></span>
+    <span>${comp}</span>`;
+  el.classList.add("show");
+}
+
+/* ─── Path highlighting ──────────────────────────────────────── */
+function highlightPath(pathNodes, severity) {
+  if (!visNetwork || !pathNodes || !pathNodes.length) return;
+  clearPathHighlight(false);
+
+  visNodes.update(visNodes.getIds().map(id => ({ id, opacity: pathNodes.includes(id)?1:0.22 })));
+
+  const pathEdgeIds = [];
+  for (let i=0; i<pathNodes.length-1; i++) {
+    const [u,v] = [pathNodes[i], pathNodes[i+1]];
+    visEdges.getIds().forEach(eid => {
+      const e = visEdges.get(eid);
+      if ((e.from===u&&e.to===v)||(e.from===v&&e.to===u)) pathEdgeIds.push(eid);
+    });
+  }
+  const sevColor = { LOW:"#22c55e", MEDIUM:"#f59e0b", HIGH:"#f97316", CRITICAL:"#ef4444" };
+  const hc = sevColor[severity] || "#8b5cf6";
+  visEdges.update(visEdges.getIds().map(id => ({
+    id,
+    color:   pathEdgeIds.includes(id) ? { color:hc, highlight:hc } : { color:"#e0e7ff", highlight:"#e0e7ff" },
+    width:   pathEdgeIds.includes(id) ? 4 : 1,
+    opacity: pathEdgeIds.includes(id) ? 1 : 0.12
+  })));
+  showPathRibbon(pathNodes, severity);
+}
+
+function clearPathHighlight(resetRibbon=true) {
+  if (!visNodes) return;
+  visNodes.update(visNodes.getIds().map(id => ({ id, opacity:1 })));
+  if (visEdges && rawNetData) {
+    visEdges.update(visEdges.getIds().map((id,i) => {
+      const e = rawNetData.edges[i] || {};
+      return { id, color:{ color:e.encrypted===false?"#fecaca":"#c7d2fe", highlight:"#8b5cf6" }, width:e.encrypted===false?3:2, opacity:1 };
+    }));
+  }
+  if (resetRibbon) {
+    document.getElementById("path-ribbon").classList.remove("show");
+    document.getElementById("path-ribbon").innerHTML = "";
+  }
+}
+
+function showPathRibbon(nodes, severity) {
+  const ribbon = document.getElementById("path-ribbon");
+  let html = "";
+  nodes.forEach((n,i) => {
+    html += `<span class="path-node-chip">${n}</span>`;
+    if (i < nodes.length-1) html += `<span class="path-arrow-sep">→</span>`;
+  });
+  if (severity) html += `<span class="path-risk-chip rc-${severity}">${severity}</span>`;
+  ribbon.innerHTML = html;
+  ribbon.classList.add("show");
+}
+
+/* ─── Graph zoom/pan controls ─────────────────────────────────── */
+function zoomIn() {
+  if (!visNetwork) return;
+  const scale = visNetwork.getScale();
+  visNetwork.moveTo({ scale: scale * 1.3, animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
+}
+
+function zoomOut() {
+  if (!visNetwork) return;
+  const scale = visNetwork.getScale();
+  visNetwork.moveTo({ scale: scale / 1.3, animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
+}
+
+function resetZoom() {
+  if (!visNetwork) return;
+  visNetwork.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+}
+
+function centerGraph() {
+  if (!visNetwork) return;
+  visNetwork.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+}
+
+function toggleGraphMaximize() {
+  const graphCard = document.getElementById("graph-card");
+  const btn = document.getElementById("graph-maximize-btn");
+  const isMaximized = graphCard.classList.contains("maximized");
+
+  if (isMaximized) {
+    graphCard.classList.remove("maximized");
+    btn.innerHTML = `
+      <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z"/></svg>
+      Maximize
+    `;
+  } else {
+    graphCard.classList.add("maximized");
+    btn.innerHTML = `
+      <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z"/></svg>
+      Restore
+    `;
+  }
+
+  // Redraw and fit graph after resize
+  setTimeout(() => {
+    if (visNetwork) {
+      visNetwork.redraw();
+      visNetwork.fit();
+    }
+  }, 100);
+}
+
+
+/* ─── Update hero stat pills ──────────────────────────────────── */
+function updateStatCards(data) {
+  const encCount = (data.edges||[]).filter(e=>e.encrypted).length;
+  setText("stat-nodes", data.nodes.length);
+  setText("stat-edges", data.edges.length);
+  setText("dc-nodes", data.nodes.length);
+  setText("dc-edges", data.edges.length);
+  setText("dc-nodes-enc", `${encCount} / ${data.edges.length} encrypted links`);
+}
+
+function updateNodeStatusCard(data) {
+  const container = document.getElementById("node-status-list");
+  if (!data || !data.nodes) return;
+  container.innerHTML = data.nodes.map(n => {
+    const badge = n.compromised
+      ? `<span class="status-badge sb-crit">⚠ Compromised</span>`
+      : n.criticality==="CRITICAL"
+        ? `<span class="status-badge sb-warn">${n.criticality}</span>`
+        : `<span class="status-badge sb-ok">Online</span>`;
+    return `<div class="status-item">
+      ${badge}
+      <span class="status-name">${n.name}</span>
+      <span class="status-meta">${n.zone}</span>
+    </div>`;
+  }).join("");
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+/* ─── Load full initial data ──────────────────────────────────── */
+async function loadGraph() {
+  try {
+    log("Authenticating…");
+    await authenticate();
+    log("Fetching network topology…");
+    const data = await api("/network");
+    log(`Received ${data.nodes.length} nodes, ${data.edges.length} edges.`);
+    renderGraph(data);
+
+    // Background: fetch attack paths and findings for stat cards
+    fetchBackgroundStats();
+  } catch(e) { log("Init error: " + e.message, true); }
+}
+
+async function fetchBackgroundStats() {
+  try {
+    const [attacks, findings] = await Promise.all([
+      api("/security/attack-paths?source=internet&target=db01"),
+      api("/security/findings")
+    ]);
+    const totalPaths = attacks.total_paths || 0;
+    setText("stat-paths", totalPaths);
+    setText("dc-attack", totalPaths);
+
+    const spofCount = (findings.single_points_of_failure||[]).length;
+    setText("stat-spofs", spofCount);
+    setText("dc-spofs", spofCount);
+    setText("dc-spofs-sub", spofCount > 0 ? "⚠ Needs attention" : "✓ No SPOFs found");
+
+    // Compute security score from attacks
+    const maxRisk = attacks.attack_paths && attacks.attack_paths.length
+      ? Math.max(...attacks.attack_paths.map(p => p.risk_score||0)) : 0;
+    const score = Math.round(100 - maxRisk);
+    setText("dc-score", score + "%");
+    setText("stat-paths", totalPaths);
+
+    const scoreLabel = score>=80?"✓ Good posture":score>=50?"⚠ Moderate risk":"⛔ High risk";
+    const scoreCls = score>=80?"change-up":score>=50?"":"change-down";
+    const scoreEl = document.getElementById("dc-score-label");
+    if (scoreEl) { scoreEl.textContent = scoreLabel; scoreEl.className = `dcard-change ${scoreCls}`; }
+
+    // Update radial arc
+    const offset = 276 - (maxRisk / 100 * 276);
+    const arc = document.getElementById("radial-arc");
+    if (arc) arc.style.strokeDashoffset = offset;
+    const rval = document.getElementById("radial-val");
+    if (rval) rval.textContent = Math.round(maxRisk);
+
+    // Highest risk path highlight info
+    if (attacks.attack_paths && attacks.attack_paths.length > 0) {
+      const worst = attacks.attack_paths.reduce((a,b)=>a.risk_score>b.risk_score?a:b);
+      const riskColors = { LOW:"change-up", MEDIUM:"", HIGH:"change-down", CRITICAL:"change-down" };
+      const aEl = document.getElementById("dc-attack-risk");
+      if (aEl) { aEl.textContent = `Max risk: ${worst.risk_score}/100 (${worst.severity})`; aEl.className = `dcard-change ${riskColors[worst.severity]||""}`; }
+    }
+
+    // Zone bar chart
+    updateZoneBars(attacks.attack_paths||[]);
+
+    // Findings sidebar
+    renderFindingsSidebar(findings);
+
+  } catch(e) { log("Stats error: " + e.message, true); }
+}
+
+/* ─── Zone bars ──────────────────────────────────────────────── */
+function updateZoneBars(paths) {
+  const zones = ["INTERNET","DMZ","APPLICATION","DATABASE"];
+  const zoneMeta = [
+    { label:"Internet",    fill:"linear-gradient(90deg,#3b82f6,#06b6d4)" },
+    { label:"DMZ",         fill:"linear-gradient(90deg,#f59e0b,#f97316)" },
+    { label:"Application", fill:"linear-gradient(90deg,#a855f7,#6366f1)" },
+    { label:"Database",    fill:"linear-gradient(90deg,#ef4444,#f43f5e)" },
+  ];
+
+  // Count how many paths cross each zone
+  const zoneCounts = {};
+  zones.forEach(z => zoneCounts[z] = 0);
+  paths.forEach(p => {
+    if (!rawNetData) return;
+    p.path && p.path.forEach(nid => {
+      const n = rawNetData.nodes.find(n=>n.id===nid);
+      if (n && zoneCounts[n.zone] !== undefined) zoneCounts[n.zone]++;
+    });
+  });
+
+  const maxCount = Math.max(1, ...Object.values(zoneCounts));
+  const container = document.getElementById("zone-bars");
+  if (!container) return;
+  container.innerHTML = zones.map((z,i) => {
+    const count = zoneCounts[z];
+    const pct   = Math.round(count / maxCount * 100);
+    return `<div class="prog-row">
+      <div class="prog-header">
+        <span class="prog-label">${zoneMeta[i].label}</span>
+        <span class="prog-val">${count} paths</span>
+      </div>
+      <div class="prog-track">
+        <div class="prog-fill" style="width:${pct}%;background:${zoneMeta[i].fill}"></div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+/* ─── Findings sidebar card ──────────────────────────────────── */
+function renderFindingsSidebar(data) {
+  const container = document.getElementById("findings-list");
+  if (!container) return;
+  const all = [
+    ...(data.misconfigurations||[]),
+    ...(data.single_points_of_failure||[]).map(f => ({
+      title: f.title, severity:"HIGH", description: f.impact
+    }))
+  ];
+  if (!all.length) {
+    container.innerHTML = `<div style="color:#16a34a;font-size:12px;font-weight:600;">✓ No findings detected</div>`;
+    return;
+  }
+  const sevDot = { CRITICAL:"#ef4444", HIGH:"#f97316", MEDIUM:"#f59e0b", LOW:"#22c55e" };
+  container.innerHTML = all.map(f => `
+    <div class="finding-item">
+      <div class="finding-sev-dot" style="background:${sevDot[f.severity]||"#94a3b8"}"></div>
+      <div class="finding-body">
+        <div class="finding-title-sm">${f.title}</div>
+        <div class="finding-desc-sm">${(f.description||"").substring(0,90)}${f.description&&f.description.length>90?"…":""}</div>
+      </div>
+    </div>`).join("");
+}
+
+/* ─── Routing ────────────────────────────────────────────────── */
+async function runRouting() {
+  const src=document.getElementById("source-node").value.trim();
+  const dst=document.getElementById("target-node").value.trim();
+  try {
+    log(`Security-aware routing: ${src} → ${dst}`);
+    const data = await api(`/routing/security-aware?source=${encodeURIComponent(src)}&destination=${encodeURIComponent(dst)}`);
+    showJSON(data);
+    const path = data?.security_aware_dijkstra?.route?.path;
+    const sev  = data?.security_aware_dijkstra?.risk_analysis?.severity;
+    if (path && path.length) highlightPath(path, sev||"LOW");
+  } catch(e) { log("Routing error: "+e.message,true); showJSON({error:e.message}); }
+}
+
+async function runDijkstra() {
+  const src=document.getElementById("source-node").value.trim();
+  const dst=document.getElementById("target-node").value.trim();
+  try {
+    log(`Dijkstra: ${src} → ${dst}`);
+    const data = await api(`/routing/dijkstra?source=${encodeURIComponent(src)}&destination=${encodeURIComponent(dst)}`);
+    showJSON(data);
+    if (data.path && data.path.length) highlightPath(data.path,"LOW");
+  } catch(e) { log("Dijkstra error: "+e.message,true); showJSON({error:e.message}); }
+}
+
+async function runReachability() {
+  const src=document.getElementById("source-node").value.trim();
+  try {
+    log(`Reachability from: ${src}`);
+    const data = await api(`/routing/reachability-tree?source=${encodeURIComponent(src)}`);
+    showJSON(data);
+    if (visNodes && data.reachable_nodes) {
+      visNodes.update(visNodes.getIds().map(id=>({ id, opacity:data.reachable_nodes.includes(id)?1:0.18 })));
+      showPathRibbon(data.reachable_nodes, null);
+    }
+  } catch(e) { log("Reachability error: "+e.message,true); showJSON({error:e.message}); }
+}
+
+/* ─── Attack paths ───────────────────────────────────────────── */
+async function runAttackPaths() {
+  const src=document.getElementById("source-node")?.value.trim() || document.getElementById("attack-source")?.value.trim() || "";
+  const dst=document.getElementById("target-node")?.value.trim() || document.getElementById("attack-target")?.value.trim() || "";
+  if (!src || !dst) { alert("Enter both source and target nodes"); return; }
+  try {
+    log(`Attack paths: ${src} → ${dst}`);
+    const data = await api(`/security/attack-paths?source=${encodeURIComponent(src)}&target=${encodeURIComponent(dst)}`);
+    showJSON(data);
+    if (data.attack_paths && data.attack_paths.length) {
+      const worst = data.attack_paths.reduce((a,b)=>a.risk_score>b.risk_score?a:b);
+      highlightPath(worst.path, worst.severity);
+      renderAttackPathsTab(data.attack_paths);
+      renderAttackPathsView(data.attack_paths);
+    }
+    updateZoneBars(data.attack_paths||[]);
+  } catch(e) { log("Attack paths error: "+e.message,true); showJSON({error:e.message}); }
+}
+
+function renderAttackPathsView(paths) {
+  const container = document.getElementById("attack-paths-results");
+  const summary = document.getElementById("attack-risk-summary");
+  if (!paths || !paths.length) {
+    if(container) container.innerHTML=`<p style="color:var(--text-muted);font-size:13px;">No attack paths found.</p>`;
+    return;
+  }
+
+  const sevColors = { LOW:"#22c55e", MEDIUM:"#f59e0b", HIGH:"#f97316", CRITICAL:"#ef4444" };
+  if(container) {
+    container.innerHTML = paths.map((p,i) => `
+      <div style="padding:14px;background:rgba(255,255,255,0.5);border-radius:12px;margin-bottom:10px;border:1px solid rgba(200,180,240,0.3);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <strong style="font-size:14px;color:var(--text-primary);">Path ${i+1}</strong>
+          <span class="path-risk-chip rc-${p.severity}">${p.severity}</span>
+          <span style="font-size:12px;color:var(--text-muted);margin-left:auto;">Risk Score: ${p.risk_score}/100</span>
+        </div>
+        <div style="font-family:var(--mono);font-size:12px;color:#5b21b6;">
+          ${p.path.join(' → ')}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  if(summary) {
+    const critical = paths.filter(p=>p.severity==="CRITICAL").length;
+    const high = paths.filter(p=>p.severity==="HIGH").length;
+    const medium = paths.filter(p=>p.severity==="MEDIUM").length;
+    const low = paths.filter(p=>p.severity==="LOW").length;
+    summary.innerHTML = `
+      <div style="margin-bottom:10px;"><strong style="font-size:16px;">${paths.length}</strong> <span style="color:var(--text-muted);font-size:13px;">Total Paths</span></div>
+      ${critical>0?`<div style="margin-bottom:6px;"><span class="path-risk-chip rc-CRITICAL" style="display:inline-block;">CRITICAL</span> <strong>${critical}</strong></div>`:''}
+      ${high>0?`<div style="margin-bottom:6px;"><span class="path-risk-chip rc-HIGH" style="display:inline-block;">HIGH</span> <strong>${high}</strong></div>`:''}
+      ${medium>0?`<div style="margin-bottom:6px;"><span class="path-risk-chip rc-MEDIUM" style="display:inline-block;">MEDIUM</span> <strong>${medium}</strong></div>`:''}
+      ${low>0?`<div style="margin-bottom:6px;"><span class="path-risk-chip rc-LOW" style="display:inline-block;">LOW</span> <strong>${low}</strong></div>`:''}
+    `;
+  }
+}
+
+function renderAttackPathsTab(paths) {
+  const container = document.getElementById("tab-apaths-container");
+  if (!paths || !paths.length) { container.innerHTML=`<p style="color:var(--text-muted);font-size:12px;">No paths found.</p>`; return; }
+  const sevColors = { LOW:"rc-LOW", MEDIUM:"rc-MEDIUM", HIGH:"rc-HIGH", CRITICAL:"rc-CRITICAL" };
+  container.innerHTML = paths.map((p,i) => `
+    <div class="finding-item" style="cursor:pointer;padding:10px 4px;" onclick="highlightPath(${JSON.stringify(p.path)},'${p.severity}')">
+      <div class="finding-sev-dot" style="background:${({LOW:"#22c55e",MEDIUM:"#f59e0b",HIGH:"#f97316",CRITICAL:"#ef4444"})[p.severity]}"></div>
+      <div class="finding-body">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+          <span class="finding-title-sm">Path ${i+1}</span>
+          <span class="path-risk-chip ${sevColors[p.severity]||""}">${p.severity}</span>
+          <span style="font-size:10px;color:var(--text-muted)">Score: ${p.risk_score}/100</span>
+        </div>
+        <div class="finding-desc-sm" style="font-family:var(--mono);">${p.path.join(" → ")}</div>
+        ${p.reasons.length?`<div class="finding-desc-sm" style="color:#9333ea;margin-top:2px;">⚠ ${p.reasons.slice(0,2).join(" | ")}</div>`:""}
+      </div>
+    </div>`).join("");
+  // Switch tab
+  document.querySelectorAll(".tab-pane").forEach(t=>t.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
+  document.getElementById("tab-apaths").classList.add("active");
+  document.querySelectorAll(".tab-btn")[2].classList.add("active");
+}
+
+/* ─── Findings ───────────────────────────────────────────────── */
+async function loadFindings() {
+  try {
+    log("Fetching security findings…");
+    const data = await api("/security/findings");
+    showJSON(data);
+    renderFindingsSidebar(data);
+    renderFindingsTab(data);
+  } catch(e) { log("Findings error: "+e.message,true); }
+}
+
+function renderFindingsTab(data) {
+  const container = document.getElementById("tab-findings-container");
+  const all = [
+    ...(data.misconfigurations||[]).map(f=>({...f,_cat:"Misconfiguration"})),
+    ...(data.single_points_of_failure||[]).map(f=>({ title:f.title, severity:"HIGH", description:f.impact, recommendation:f.recommendation, _cat:"SPOF" }))
+  ];
+  if (!all.length) { container.innerHTML=`<p style="color:#16a34a;font-size:12px;font-weight:600;">✓ No findings detected.</p>`; return; }
+  const sevDot = { CRITICAL:"#ef4444", HIGH:"#f97316", MEDIUM:"#f59e0b", LOW:"#22c55e" };
+  container.innerHTML = all.map(f => `
+    <div class="finding-item">
+      <div class="finding-sev-dot" style="background:${sevDot[f.severity]||"#94a3b8"};margin-top:4px;"></div>
+      <div class="finding-body">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+          <span class="finding-title-sm">${f.title}</span>
+          <span style="font-size:9px;color:var(--text-muted);background:rgba(200,180,240,0.2);padding:1px 6px;border-radius:8px;">${f._cat}</span>
+        </div>
+        <div class="finding-desc-sm">${f.description||""}</div>
+        ${f.recommendation?`<div class="finding-desc-sm" style="color:#7c3aed;margin-top:3px;">💡 ${f.recommendation}</div>`:""}
+      </div>
+    </div>`).join("");
+  document.querySelectorAll(".tab-pane").forEach(t=>t.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(t=>t.classList.remove("active"));
+  document.getElementById("tab-findings").classList.add("active");
+  document.querySelectorAll(".tab-btn")[1].classList.add("active");
+}
+
+/* ─── Simulation ─────────────────────────────────────────────── */
+async function runSimulation() {
+  const action=document.getElementById("sim-action").value;
+  const target=document.getElementById("sim-target").value.trim();
+  const src=document.getElementById("source-node").value.trim();
+  const dst=document.getElementById("target-node").value.trim();
+  try {
+    log(`Simulation: ${action} on ${target}`);
+    const data = await api(
+      `/simulation/what-if?action=${action}&target_id=${encodeURIComponent(target)}&source_id=${encodeURIComponent(src)}&dest_id=${encodeURIComponent(dst)}`,
+      { method:"POST" }
+    );
+    showJSON(data);
+
+    // Display in simulation view if active
+    const simResults = document.getElementById("simulation-results");
+    if(simResults) {
+      simResults.innerHTML = `<pre class="result-output">${JSON.stringify(data, null, 2)}</pre>`;
+    }
+
+    await loadGraph();
+  } catch(e) { log("Simulation error: "+e.message,true); showJSON({error:e.message}); }
+}
+
+/* ─── Reset ──────────────────────────────────────────────────── */
+async function resetNetwork() {
+  try {
+    log("Resetting network…");
+    await api("/network/reset",{method:"POST"});
+    log("Reset complete.");
+    await loadGraph();
+  } catch(e) { log("Reset error: "+e.message,true); }
+}
+
+/* ─── Lab ────────────────────────────────────────────────────── */
+async function runDistanceVector() {
+  try {
+    log("Distance Vector…");
+    const d=await api("/routing/distance-vector");
+    showJSON(d);
+    const labOutput = document.getElementById("lab-results-output");
+    if(labOutput) labOutput.textContent = JSON.stringify(d, null, 2);
+  }
+  catch(e) { log("DV error: "+e.message,true); showJSON({error:e.message}); }
+}
+async function runCRC() {
+  try {
+    log("CRC demo…");
+    const d=await fetch(`${API_BASE}/lab/crc/generate`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({data_bits:"1101011011",polynomial:"CRC-16"})
+    }).then(r=>r.json());
+    showJSON(d);
+    const labOutput = document.getElementById("lab-results-output");
+    if(labOutput) labOutput.textContent = JSON.stringify(d, null, 2);
+  } catch(e) { log("CRC error: "+e.message,true); showJSON({error:e.message}); }
+}
+async function runLeakyBucket() {
+  try {
+    log("Leaky Bucket…");
+    const d=await fetch(`${API_BASE}/lab/leaky-bucket`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({capacity:10,leak_rate:3,incoming_packets:[4,2,6,1,8,2]})
+    }).then(r=>r.json());
+    showJSON(d);
+    const labOutput = document.getElementById("lab-results-output");
+    if(labOutput) labOutput.textContent = JSON.stringify(d, null, 2);
+  } catch(e) { log("Leaky Bucket error: "+e.message,true); showJSON({error:e.message}); }
+}
+async function runBitStuffing() {
+  try {
+    log("Bit Stuffing…");
+    const d=await fetch(`${API_BASE}/lab/framing/bit-stuffing`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({bit_stream:"11111011111001111101"})
+    }).then(r=>r.json());
+    showJSON(d);
+    const labOutput = document.getElementById("lab-results-output");
+    if(labOutput) labOutput.textContent = JSON.stringify(d, null, 2);
+  } catch(e) { log("Bit Stuffing error: "+e.message,true); showJSON({error:e.message}); }
+}
+
+/* ─── Navigation ─────────────────────────────────────────────── */
+function navigateTo(sectionName) {
+  // Hide all sections
+  const sections = [
+    'section-dashboard',
+    'section-dashboard-cards',
+    'section-topology',
+    'section-attack-paths',
+    'section-simulation',
+    'section-lab',
+    'section-audit-logs'
+  ];
+
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  // Update nav button states
+  const navLinks = document.querySelectorAll('.nav-link');
+  navLinks.forEach(link => link.classList.remove('active'));
+
+  // Show selected section(s) and activate nav button
+  switch(sectionName) {
+    case 'dashboard':
+      document.getElementById('section-dashboard').style.display = 'block';
+      document.getElementById('section-dashboard-cards').style.display = 'block';
+      navLinks[0].classList.add('active');
+      break;
+    case 'topology':
+      document.getElementById('section-topology').style.display = 'block';
+      navLinks[1].classList.add('active');
+      // Fit graph to view when opening topology
+      setTimeout(() => { if(visNetwork) visNetwork.fit(); }, 100);
+      break;
+    case 'attack-paths':
+      document.getElementById('section-attack-paths').style.display = 'block';
+      navLinks[2].classList.add('active');
+      break;
+    case 'simulation':
+      document.getElementById('section-simulation').style.display = 'block';
+      navLinks[3].classList.add('active');
+      break;
+    case 'lab':
+      document.getElementById('section-lab').style.display = 'block';
+      navLinks[4].classList.add('active');
+      break;
+    case 'audit-logs':
+      document.getElementById('section-audit-logs').style.display = 'block';
+      navLinks[5].classList.add('active');
+      // Load audit logs when opening this view
+      loadAuditLogs();
+      break;
+  }
+
+  // Scroll to top smoothly
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  log(`Navigated to: ${sectionName}`);
+}
+
+/* ─── Audit Logs ─────────────────────────────────────────────── */
+async function loadAuditLogs() {
+  const container = document.getElementById("audit-logs-display");
+  try {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">Loading audit logs...</div>';
+
+    const data = await api("/audit-logs");
+    const logs = data.audit_logs || [];
+
+    if (logs.length === 0) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">No audit logs yet. Interact with the system to generate logs.</div>';
+      return;
+    }
+
+    const logColors = {
+      "RUN_ATTACK_PATH_ANALYSIS": "#ef4444",
+      "RUN_SECURITY_AWARE_ROUTING": "#f59e0b",
+      "RUN_DIJKSTRA": "#3b82f6",
+      "RUN_WHAT_IF_SIMULATION": "#a855f7",
+      "RESET_NETWORK": "#10b981",
+      "RUN_DISTANCE_VECTOR": "#06b6d4"
+    };
+
+    container.innerHTML = `
+      <div style="font-family:var(--mono);font-size:12px;line-height:1.8;color:#5b21b6;">
+        ${logs.map(log => {
+          const color = logColors[log.action] || "#3b82f6";
+          const timestamp = new Date(log.timestamp).toLocaleString();
+          const actionName = log.action.replace(/_/g, ' ');
+          const detailsStr = Object.keys(log.details).length > 0
+            ? ` — ${Object.entries(log.details).map(([k,v]) => `${k}=${v}`).join(', ')}`
+            : '';
+
+          return `
+            <div style="padding:8px;border-bottom:1px solid rgba(200,180,240,0.2);">
+              <strong>[${timestamp}]</strong>
+              <span style="color:${color};font-weight:600;">[${log.username.toUpperCase()}]</span>
+              ${actionName}${detailsStr}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    log("Audit logs loaded successfully");
+  } catch(e) {
+    console.error("Failed to load audit logs:", e);
+    container.innerHTML = `
+      <div style="padding:20px;text-align:center;color:#ef4444;">
+        Failed to load audit logs: ${e.message}
+      </div>
+    `;
+  }
+}
+
+// Attach navigation handlers
+function initNavigation() {
+  const navLinks = document.querySelectorAll('.nav-link');
+  const sections = ['dashboard', 'topology', 'attack-paths', 'simulation', 'lab', 'audit-logs'];
+  navLinks.forEach((link, index) => {
+    link.addEventListener('click', () => navigateTo(sections[index]));
+  });
+}
+
+/* ─── Boot ───────────────────────────────────────────────────── */
+window.addEventListener("DOMContentLoaded", () => {
+  loadGraph();
+  initNavigation();
+});
+</script>
+</body>
+</html>

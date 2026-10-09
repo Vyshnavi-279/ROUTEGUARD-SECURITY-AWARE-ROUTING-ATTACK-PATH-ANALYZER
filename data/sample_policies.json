@@ -1,0 +1,6 @@
+[
+  { "id": "pol-01", "name": "Deny Direct Internet to Database", "source_zone": "INTERNET", "destination_zone": "DATABASE", "action": "DENY", "priority": 100 },
+  { "id": "pol-02", "name": "Allow Internet to Web", "source_zone": "INTERNET", "destination_zone": "DMZ", "action": "ALLOW", "priority": 90 },
+  { "id": "pol-03", "name": "Allow App to Database", "source_zone": "APPLICATION", "destination_zone": "DATABASE", "action": "ALLOW", "priority": 80 },
+  { "id": "pol-04", "name": "Deny Web direct to Database", "source_zone": "DMZ", "destination_zone": "DATABASE", "action": "DENY", "priority": 95 }
+]

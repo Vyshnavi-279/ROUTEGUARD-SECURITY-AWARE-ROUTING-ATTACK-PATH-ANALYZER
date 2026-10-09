@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    { "id": "internet", "name": "Public Internet", "type": "INTERNET", "zone": "INTERNET", "trust_level": "UNTRUSTED", "criticality": "LOW", "compromised": false },
+    { "id": "fw01", "name": "Perimeter Firewall", "type": "FIREWALL", "zone": "DMZ", "trust_level": "HIGH", "criticality": "HIGH", "compromised": false },
+    { "id": "web01", "name": "Public Web Server", "type": "WEB_SERVER", "zone": "DMZ", "trust_level": "MEDIUM", "criticality": "MEDIUM", "compromised": false },
+    { "id": "router01", "name": "Core Router R1", "type": "ROUTER", "zone": "DMZ", "trust_level": "MEDIUM", "criticality": "MEDIUM", "compromised": false },
+    { "id": "router02", "name": "Backup Router R2", "type": "ROUTER", "zone": "APPLICATION", "trust_level": "HIGH", "criticality": "MEDIUM", "compromised": false },
+    { "id": "app01", "name": "Primary App Server", "type": "APP_SERVER", "zone": "APPLICATION", "trust_level": "MEDIUM", "criticality": "HIGH", "compromised": false },
+    { "id": "db01", "name": "Customer Database", "type": "DATABASE", "zone": "DATABASE", "trust_level": "HIGH", "criticality": "CRITICAL", "compromised": false },
+    { "id": "admin01", "name": "SecOps Admin Workstation", "type": "ADMIN", "zone": "MANAGEMENT", "trust_level": "HIGH", "criticality": "HIGH", "compromised": false }
+  ],
+  "edges": [
+    { "source": "internet", "destination": "fw01", "cost": 1.0, "bidirectional": true, "allowed_protocols": ["HTTPS"], "encrypted": true, "trusted": true, "active": true },
+    { "source": "fw01", "destination": "web01", "cost": 1.0, "bidirectional": true, "allowed_protocols": ["HTTP", "HTTPS"], "encrypted": true, "trusted": true, "active": true },
+    { "source": "fw01", "destination": "router01", "cost": 2.0, "bidirectional": true, "allowed_protocols": ["TCP"], "encrypted": true, "trusted": true, "active": true },
+    { "source": "web01", "destination": "app01", "cost": 2.0, "bidirectional": true, "allowed_protocols": ["HTTPS"], "encrypted": true, "trusted": true, "active": true },
+    { "source": "router01", "destination": "router02", "cost": 1.0, "bidirectional": true, "allowed_protocols": ["TCP"], "encrypted": true, "trusted": true, "active": true },
+    { "source": "router02", "destination": "app01", "cost": 2.0, "bidirectional": true, "allowed_protocols": ["TCP"], "encrypted": true, "trusted": true, "active": true },
+    { "source": "app01", "destination": "db01", "cost": 1.0, "bidirectional": true, "allowed_protocols": ["TCP"], "encrypted": true, "trusted": true, "active": true },
+    { "source": "admin01", "destination": "db01", "cost": 1.0, "bidirectional": true, "allowed_protocols": ["SSH"], "encrypted": true, "trusted": true, "active": true }
+  ]
+}
